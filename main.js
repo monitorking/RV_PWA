@@ -1,78 +1,34 @@
-// Inicializar mapa
-const map = L.map('map').setView([0, 0], 2);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-const marker = L.marker([0, 0]).addTo(map);
-
-// Actualizar hora cada segundo
-function actualizarHora() {
-  document.getElementById('hora').textContent = new Date().toLocaleString();
-}
-setInterval(actualizarHora, 1000);
-actualizarHora();
-
-// Mostrar repetidores desde RepeaterBook API
-function mostrarRepetidoresRepeaterBook(lat, lon) {
-  const url = `https://api.repeaterbook.com/repeaters?lat=${lat}&lon=${lon}&band=2m,70cm&mode=FM`;
-  fetch(url)
-    .then(res => res.json())
-    .then(data => {
-      const tbody = document.querySelector('#repetidores tbody');
-      tbody.innerHTML = "";
-      const repetidores = data.repeaters || [];
-      repetidores.slice(0, 10).forEach(r => {
-        const fila = `<tr>
-          <td>${r.callsign || r.name || '---'}</td>
-          <td>${parseFloat(r.distance_km || 0).toFixed(1)}</td>
-          <td>${r.output_freq || '---'}</td>
-        </tr>`;
-        tbody.insertAdjacentHTML('beforeend', fila);
-      });
-    })
-    .catch(err => {
-      console.error("Error al consultar RepeaterBook:", err);
-    });
-}
-
-// Mostrar clima desde Open-Meteo
-function mostrarClima(lat, lon) {
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&timezone=auto`;
-  fetch(url)
-    .then(r => r.json())
-    .then(data => {
-      const cw = data.current_weather;
-      document.getElementById('clima').textContent =
-        `${cw.temperature}°C, viento ${cw.windspeed} km/h`;
-    })
-    .catch(err => {
-      console.error("Error al obtener el clima:", err);
-    });
-}
-
-// GPS en tiempo real + repetidores cada 5 minutos
-if (navigator.geolocation) {
-  function actualizarDatos(pos) {
-    const { latitude: lat, longitude: lon, speed } = pos.coords;
-    marker.setLatLng([lat, lon]);
-    map.setView([lat, lon], 12);
-    document.getElementById('velocidad').textContent = ((speed || 0) * 3.6).toFixed(1);
-
-    mostrarClima(lat, lon);
-    mostrarRepetidoresRepeaterBook(lat, lon);
-  }
-
-  // Actualización continua para mapa y velocidad
-  navigator.geolocation.watchPosition(actualizarDatos, err => {
-    alert("Error de GPS: " + err.message);
-  }, {
-    enableHighAccuracy: true,
-    maximumAge: 1000
+// Fetch CSV de repetidores por país
+async function cargarCSV(country) {
+  const url = `https://www.repeaterbook.com/api/exportROW.php?country=${encodeURIComponent(country)}`;
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': '(AutoInfoApp, your@email.com)'
+    }
   });
+  const csv = await res.text();
+  return csv.split('\n').slice(1).map(line => {
+    const cols = line.split(',');
+    return {
+      nombre: cols[1].trim(),
+      lat: parseFloat(cols[?]), // ajustar índice basado en columnas Lat/Long
+      lon: parseFloat(cols[?]),
+      freq: cols[?] // frecuencia
+    };
+  });
+}
 
-  // Actualizar repetidores cada 5 minutos
-  setInterval(() => {
-    navigator.geolocation.getCurrentPosition(actualizarDatos);
-  }, 5 * 60 * 1000);
+let repetidoresList = [];
+cargarCSV('Spain%20,France%20,Germany').then(list => {
+  repetidoresList = list;
+});
 
-} else {
-  alert("GPS no disponible en este dispositivo.");
+// Luego como antes: watchPosition, obtener lat/lon, y hacer:
+function actualizarRepetidores(lat, lon) {
+  const cercanos = repetidoresList
+    .map(r=>({...r, d: distKm(lat,lon,r.lat,r.lon)}))
+    .filter(r=>['2‑m','70‑cm'].includes(r.band) && ['FM','DMR'].some(m=>r.mode.includes(m)))
+    .sort((a,b)=>a.d-b.d)
+    .slice(0,10);
+  // mostrar en tabla
 }

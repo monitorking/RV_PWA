@@ -1,76 +1,78 @@
-// Inicialización del mapa
-const map = L.map('map').setView([0,0], 2);
+// Inicializar mapa
+const map = L.map('map').setView([0, 0], 2);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-const marker = L.marker([0,0]).addTo(map);
+const marker = L.marker([0, 0]).addTo(map);
 
-// Hora
+// Actualizar hora cada segundo
 function actualizarHora() {
   document.getElementById('hora').textContent = new Date().toLocaleString();
 }
 setInterval(actualizarHora, 1000);
 actualizarHora();
 
-// Cargar CSV de repetidores
-let repetidores = [];
-fetch('repetidores.csv')
-  .then(r => r.text())
-  .then(txt => {
-    const lines = txt.trim().split('\n');
-    const headers = lines[0].split(',');
-    repetidores = lines.slice(1).map(line => {
-      const cols = line.split(',');
-      return {
-        nombre: cols[headers.indexOf('nombre')],
-        lat: parseFloat(cols[headers.indexOf('lat')]),
-        lon: parseFloat(cols[headers.indexOf('lon')]),
-        freq: cols[headers.indexOf('freq')]
-      };
+// Mostrar repetidores desde RepeaterBook API
+function mostrarRepetidoresRepeaterBook(lat, lon) {
+  const url = `https://api.repeaterbook.com/repeaters?lat=${lat}&lon=${lon}&band=2m,70cm&mode=FM,DMR`;
+  fetch(url)
+    .then(res => res.json())
+    .then(data => {
+      const tbody = document.querySelector('#repetidores tbody');
+      tbody.innerHTML = "";
+      const repetidores = data.repeaters || [];
+      repetidores.slice(0, 10).forEach(r => {
+        const fila = `<tr>
+          <td>${r.callsign || r.name || '---'}</td>
+          <td>${parseFloat(r.distance_km || 0).toFixed(1)}</td>
+          <td>${r.output_freq || '---'}</td>
+        </tr>`;
+        tbody.insertAdjacentHTML('beforeend', fila);
+      });
+    })
+    .catch(err => {
+      console.error("Error al consultar RepeaterBook:", err);
     });
-  });
-
-// Función distancia Haversine
-function distKm(lat1, lon1, lat2, lon2) {
-  const R = 6371, dLat=(lat2-lat1)*Math.PI/180, dLon=(lon2-lon1)*Math.PI/180;
-  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
-  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
 }
 
-// Mostrar repetidores cercanos
-function mostrarReps(lat, lon) {
-  const tbody = document.querySelector('#repetidores tbody');
-  tbody.innerHTML = '';
-  repetidores.map(r => ({
-    ...r,
-    d: distKm(lat, lon, r.lat, r.lon)
-  }))
-  .sort((a,b) => a.d - b.d)
-  .slice(0,10)
-  .forEach(r => {
-    const tr = `<tr>
-      <td>${r.nombre}</td><td>${r.d.toFixed(2)}</td><td>${r.freq}</td>
-    </tr>`;
-    tbody.insertAdjacentHTML('beforeend', tr);
-  });
+// Mostrar clima desde Open-Meteo
+function mostrarClima(lat, lon) {
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&timezone=auto`;
+  fetch(url)
+    .then(r => r.json())
+    .then(data => {
+      const cw = data.current_weather;
+      document.getElementById('clima').textContent =
+        `${cw.temperature}°C, viento ${cw.windspeed} km/h`;
+    })
+    .catch(err => {
+      console.error("Error al obtener el clima:", err);
+    });
 }
 
-// Ubicación y clima
+// GPS en tiempo real + repetidores cada 5 minutos
 if (navigator.geolocation) {
-  navigator.geolocation.watchPosition(pos => {
-    const { latitude:lat, longitude:lon, speed } = pos.coords;
+  function actualizarDatos(pos) {
+    const { latitude: lat, longitude: lon, speed } = pos.coords;
     marker.setLatLng([lat, lon]);
     map.setView([lat, lon], 12);
-    document.getElementById('velocidad').textContent = ((speed||0)*3.6).toFixed(1);
+    document.getElementById('velocidad').textContent = ((speed || 0) * 3.6).toFixed(1);
 
-    mostrarReps(lat, lon);
+    mostrarClima(lat, lon);
+    mostrarRepetidoresRepeaterBook(lat, lon);
+  }
 
-    fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&timezone=auto`)
-      .then(r => r.json())
-      .then(data => {
-        const cw = data.current_weather;
-        document.getElementById('clima').textContent = 
-          `${cw.temperature}°C, viento ${cw.windspeed} km/h`;
-      });
-  }, err => alert('GPS error: '+err.message), { enableHighAccuracy:true });
+  // Actualización continua para mapa y velocidad
+  navigator.geolocation.watchPosition(actualizarDatos, err => {
+    alert("Error de GPS: " + err.message);
+  }, {
+    enableHighAccuracy: true,
+    maximumAge: 1000
+  });
+
+  // Actualizar repetidores cada 5 minutos
+  setInterval(() => {
+    navigator.geolocation.getCurrentPosition(actualizarDatos);
+  }, 5 * 60 * 1000);
+
 } else {
-  alert('GPS no disponible');
+  alert("GPS no disponible en este dispositivo.");
 }

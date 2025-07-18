@@ -12,7 +12,7 @@ actualizarHora();
 
 // Mostrar repetidores desde RepeaterBook API
 function mostrarRepetidoresRepeaterBook(lat, lon) {
-  const url = `https://api.repeaterbook.com/repeaters?lat=${lat}&lon=${lon}&band=2m,70cm&mode=FM,DMR`;
+  const url = `https://api.repeaterbook.com/repeaters?lat=${lat}&lon=${lon}&band=2m,70cm&mode=FM`;
   fetch(url)
     .then(res => res.json())
     .then(data => {

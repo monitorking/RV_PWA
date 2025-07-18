@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Info‑Autocaravana PWA</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <style>
+    body { margin:0; font-family:sans-serif; }
+    #map { height:50vh; }
+    .info { padding: 10px; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { border: 1px solid #ccc; padding:4px; text-align:left; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="info">
+    <p><strong>Hora:</strong> <span id="hora">--</span></p>
+    <p><strong>Velocidad:</strong> <span id="velocidad">--</span> km/h</p>
+    <h3>Clima actual:</h3>
+    <p id="clima">--</p>
+    <h3>Repetidores cercanos:</h3>
+    <table id="repetidores">
+      <thead><tr><th>Nombre</th><th>Distancia (km)</th><th>Frecuencia</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>

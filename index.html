@@ -1,34 +1,151 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8">
-  <title>Info‑Autocaravana PWA</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clima en ruta</title>
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body { margin:0; font-family:sans-serif; }
-    #map { height:50vh; }
-    .info { padding: 10px; }
-    table { width:100%; border-collapse:collapse; }
-    th, td { border: 1px solid #ccc; padding:4px; text-align:left; }
+    body { font-family: sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; }
+    main { flex: 1; display: flex; flex-direction: column; }
+    #map { flex: 1; min-height: 50%; }
+    .bottom-half { flex: 1; display: flex; }
+    .left-pane, .right-pane { flex: 1; padding: 1rem; box-sizing: border-box; overflow-y: auto; }
+    .forecast-grid { display: flex; gap: 1rem; overflow-x: auto; }
+    .forecast-day { flex: 0 0 auto; padding: 0.5rem; background: #f0f0f0; border-radius: 8px; text-align: center; }
+    .forecast-day span { font-size: 2rem; display: block; }
+    .current-weather { background: #f0f0f0; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+    .current-top { display: flex; justify-content: space-between; font-size: 1.1rem; }
+    .current-bottom { display: flex; justify-content: space-between; align-items: center; }
+    .current-weather-icon { font-size: 3rem; }
+    .current-weather-info { font-size: 1.5rem; font-weight: bold; }
+    .wind-speed, .vehicle-speed { display: flex; align-items: center; gap: 0.25rem; font-size: 1.2rem; }
+    canvas { max-width: 100%; height: auto; }
   </style>
 </head>
 <body>
-  <div id="map"></div>
-  <div class="info">
-    <p><strong>Hora:</strong> <span id="hora">--</span></p>
-    <p><strong>Velocidad:</strong> <span id="velocidad">--</span> km/h</p>
-    <h3>Clima actual:</h3>
-    <p id="clima">--</p>
-    <h3>Repetidores cercanos:</h3>
-    <table id="repetidores">
-      <thead><tr><th>Nombre</th><th>Distancia (km)</th><th>Frecuencia</th></tr></thead>
-      <tbody></tbody>
-    </table>
-  </div>
+  <main>
+    <div id="map"></div>
+    <div class="bottom-half">
+      <div class="left-pane">
+        <div class="current-weather" id="clima">
+          <div class="current-top">
+            <div id="hora"></div>
+          </div>
+          <div class="current-bottom">
+            <div style="display: flex; align-items: center; gap: 1rem;">
+              <div class="current-weather-icon" id="clima-icono">☀️</div>
+              <div class="current-weather-info" id="clima-detalles">--</div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+              <div class="wind-speed">🌪️ <span id="velocidad-viento">0</span> km/h</div>
+              <div class="vehicle-speed">🚗 <span id="velocidad-vehiculo">0</span> km/h</div>
+            </div>
+          </div>
+        </div>
+        <div class="forecast-grid" id="forecast"></div>
+      </div>
+      <div class="right-pane">
+        <canvas id="chartHoras"></canvas>
+      </div>
+    </div>
+  </main>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <script src="main.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <script>
+    const map = L.map('map').setView([0, 0], 2);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    const marker = L.marker([0, 0]).addTo(map);
+
+    const horaSpan = document.getElementById('hora');
+    setInterval(() => {
+      horaSpan.textContent = new Date().toLocaleString();
+    }, 1000);
+
+    const chartCtx = document.getElementById('chartHoras').getContext('2d');
+    let tempChart;
+
+    function getWeatherIcon(code) {
+      const icons = {
+        0: "☀️", 1: "🌤️", 2: "⛅", 3: "☁️",
+        45: "🌫️", 48: "🌫️",
+        51: "🌦️", 53: "🌦️", 55: "🌧️",
+        61: "🌧️", 63: "🌧️", 65: "🌧️",
+        71: "🌨️", 73: "🌨️", 75: "❄️",
+        80: "🌦️", 81: "🌧️", 82: "⛈️",
+        95: "⛈️", 96: "⛈️", 99: "⛈️"
+      };
+      return icons[code] || "❔";
+    }
+
+    function mostrarClima(lat, lon) {
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&hourly=temperature_2m,weathercode&daily=temperature_2m_max,temperature_2m_min,weathercode&timezone=auto`;
+      fetch(url)
+        .then(r => r.json())
+        .then(data => {
+          const cw = data.current_weather;
+          const icono = getWeatherIcon(cw.weathercode);
+          document.getElementById('clima-icono').textContent = icono;
+          document.getElementById('clima-detalles').innerHTML = `${cw.temperature}°C`;
+          document.getElementById('velocidad-viento').textContent = cw.windspeed;
+
+          const labels = data.hourly.time.slice(0, 24).map(h => h.split('T')[1]);
+          const temps = data.hourly.temperature_2m.slice(0, 24);
+          if (tempChart) tempChart.destroy();
+          tempChart = new Chart(chartCtx, {
+            type: 'line',
+            data: {
+              labels,
+              datasets: [{
+                label: 'Temperatura (°C)',
+                data: temps,
+                fill: false,
+                borderColor: 'red',
+                tension: 0.3
+              }]
+            },
+            options: { responsive: true, scales: { y: { beginAtZero: false } } }
+          });
+
+          const days = data.daily;
+          const forecast = document.getElementById('forecast');
+          forecast.innerHTML = '';
+          const weekdays = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+          for (let i = 0; i < days.time.length; i++) {
+            const el = document.createElement('div');
+            el.className = 'forecast-day';
+            const fecha = new Date(days.time[i]);
+            const dia = weekdays[fecha.getDay()];
+            const icon = getWeatherIcon(days.weathercode[i]);
+            el.innerHTML = `<span>${icon}</span><strong>${dia}</strong><br>${days.temperature_2m_max[i]}° / ${days.temperature_2m_min[i]}°`;
+            forecast.appendChild(el);
+          }
+        });
+    }
+
+    if (navigator.geolocation) {
+      navigator.geolocation.watchPosition(pos => {
+        const { latitude: lat, longitude: lon, speed } = pos.coords;
+        marker.setLatLng([lat, lon]);
+        map.setView([lat, lon], 12);
+        document.getElementById('velocidad-vehiculo').textContent = ((speed || 0) * 3.6).toFixed(1);
+        mostrarClima(lat, lon);
+      }, err => {
+        alert("Error GPS: " + err.message);
+      }, { enableHighAccuracy: true });
+    } else {
+      alert("Geolocalización no soportada");
+    }
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('service-worker.js')
+          .then(reg => console.log('SW registrado', reg))
+          .catch(err => console.error('SW error', err));
+      });
+    }
+  </script>
 </body>
 </html>

@@ -22,6 +22,8 @@
     .current-weather-info { font-size: 1.5rem; font-weight: bold; }
     .wind-speed, .vehicle-speed { display: flex; align-items: center; gap: 0.25rem; font-size: 1.2rem; }
     canvas { max-width: 100%; height: auto; }
+    .poi-section { padding: 1rem; background: #f9f9f9; }
+    .poi-item { margin-bottom: 0.5rem; font-size: 1.1rem; }
   </style>
 </head>
 <body>
@@ -40,12 +42,16 @@
               <div class="current-weather-info" id="clima-detalles">--</div>
             </div>
             <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-              <div class="wind-speed">🌬 <span id="velocidad-viento">0</span> km/h</div>
+              <div class="wind-speed">🌬️ <span id="velocidad-viento">0</span> km/h</div>
               <div class="vehicle-speed">🚗 <span id="velocidad-vehiculo">0</span> km/h</div>
             </div>
           </div>
         </div>
         <div class="forecast-grid" id="forecast"></div>
+        <div class="poi-section">
+          <div id="restaurantes"></div>
+          <div id="gasolineras"></div>
+        </div>
       </div>
       <div class="right-pane">
         <canvas id="chartHoras"></canvas>
@@ -60,12 +66,14 @@
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
     const marker = L.marker([0, 0]).addTo(map);
 
+    let poiMarkers = [];
+
     const horaSpan = document.getElementById('hora');
     const fechaSpan = document.getElementById('fecha');
     setInterval(() => {
       const ahora = new Date();
-      horaSpan.innerHTML = `🕒 ${ahora.toLocaleTimeString()}`;
-      fechaSpan.innerHTML = `📅 ${ahora.toLocaleDateString()}`;
+      horaSpan.innerHTML = `⏰ ${ahora.toLocaleTimeString()}`;
+      fechaSpan.innerHTML = `🗓️ ${ahora.toLocaleDateString()}`;
     }, 1000);
 
     const chartCtx = document.getElementById('chartHoras').getContext('2d');
@@ -134,6 +142,56 @@
         });
     }
 
+    function mostrarPOIs(lat, lon) {
+      poiMarkers.forEach(m => map.removeLayer(m));
+      poiMarkers = [];
+      const radius = 5000;
+      const url = `https://overpass-api.de/api/interpreter?data=[out:json];(
+        node["amenity"="restaurant"](around:${radius},${lat},${lon});
+        node["amenity"="fuel"](around:${radius},${lat},${lon});
+      );out body;`;
+      fetch(url)
+        .then(r => r.json())
+        .then(data => {
+          const restaurantes = [];
+          const gasolineras = [];
+          for (const e of data.elements) {
+            const distKm = (getDistance(lat, lon, e.lat, e.lon) / 1000).toFixed(1);
+            const name = e.tags.name || 'Sin nombre';
+            const info = { nombre: name, distancia: distKm, lat: e.lat, lon: e.lon };
+            if (e.tags.amenity === 'restaurant') restaurantes.push(info);
+            if (e.tags.amenity === 'fuel') gasolineras.push(info);
+          }
+          restaurantes.sort((a, b) => a.distancia - b.distancia);
+          gasolineras.sort((a, b) => a.distancia - b.distancia);
+
+          document.getElementById('restaurantes').innerHTML = `<strong>🍽️ Restaurantes cercanos</strong><br>` + restaurantes.slice(0, 3).map((r, i) => {
+            const marker = L.marker([r.lat, r.lon], { title: `${i+1}` }).bindPopup(`${i+1}. ${r.nombre}`).addTo(map);
+            poiMarkers.push(marker);
+            return `<div class="poi-item">${i+1}. ${r.nombre} (${r.distancia} km)</div>`;
+          }).join('');
+
+          document.getElementById('gasolineras').innerHTML = `<strong>⛽ Gasolineras cercanas</strong><br>` + gasolineras.slice(0, 3).map((g, i) => {
+            const marker = L.marker([g.lat, g.lon], { title: `${i+1}` }).bindPopup(`${i+1}. ${g.nombre}`).addTo(map);
+            poiMarkers.push(marker);
+            return `<div class="poi-item">${i+1}. ${g.nombre} (${g.distancia} km)</div>`;
+          }).join('');
+        });
+    }
+
+    function getDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371e3;
+      const φ1 = lat1 * Math.PI / 180;
+      const φ2 = lat2 * Math.PI / 180;
+      const Δφ = (lat2 - lat1) * Math.PI / 180;
+      const Δλ = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                Math.cos(φ1) * Math.cos(φ2) *
+                Math.sin(Δλ/2) * Math.sin(Δλ/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
     if (navigator.geolocation) {
       navigator.geolocation.watchPosition(pos => {
         const { latitude: lat, longitude: lon, speed } = pos.coords;
@@ -141,6 +199,7 @@
         map.setView([lat, lon], 12);
         document.getElementById('velocidad-vehiculo').textContent = ((speed || 0) * 3.6).toFixed(1);
         mostrarClima(lat, lon);
+        mostrarPOIs(lat, lon);
       }, err => {
         alert("Error GPS: " + err.message);
       }, { enableHighAccuracy: true });

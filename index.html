@@ -16,9 +16,14 @@
     .current-top { display: flex; justify-content: center; font-size: 1.1rem; align-items: center; gap: 1rem; }
     .current-bottom { display: flex; justify-content: space-between; align-items: center; }
     .current-weather-icon { font-size: 3rem; }
-    .current-weather-info { font-size: 1.5rem; font-weight: bold; }
-    .wind-speed, .vehicle-speed, .temp-max { display: flex; align-items: center; gap: 0.25rem; font-size: 1.2rem; }
+    .current-weather-info, .temp-max { font-size: 1.5rem; font-weight: bold; }
+    .wind-speed, .vehicle-speed { display: flex; align-items: center; gap: 0.25rem; font-size: 1.2rem; }
     .poi-section { padding: 1rem; background: #f9f9f9; }
+    .poi-tabs { display: flex; gap: 1rem; margin-bottom: 1rem; }
+    .poi-tab { cursor: pointer; padding: 0.5rem 1rem; border-radius: 5px; background: #ddd; }
+    .poi-tab.active { background: #bbb; font-weight: bold; }
+    .poi-list { display: none; }
+    .poi-list.active { display: block; }
     .poi-item { margin-bottom: 0.5rem; font-size: 1.1rem; }
   </style>
 </head>
@@ -37,7 +42,7 @@
               <div class="current-weather-icon" id="clima-icono">☀️</div>
               <div style="display: flex; flex-direction: column;">
                 <div class="current-weather-info" id="clima-detalles">--</div>
-                <div class="temp-max"><span id="temp-max-dia">--</span>°C</div>
+                <div class="temp-max" id="temp-max-dia">--°C</div>
               </div>
             </div>
             <div style="display: flex; flex-direction: column; gap: 0.5rem;">
@@ -49,9 +54,14 @@
       </div>
       <div class="right-pane">
         <div class="poi-section">
-          <div id="restaurantes"></div>
-          <div id="gasolineras"></div>
-          <div id="areas"></div>
+          <div class="poi-tabs">
+            <div class="poi-tab active" data-target="restaurantes">🍽️ Restaurantes</div>
+            <div class="poi-tab" data-target="gasolineras">⛽ Gasolineras</div>
+            <div class="poi-tab" data-target="areas">🏕️ Áreas</div>
+          </div>
+          <div id="restaurantes" class="poi-list active"></div>
+          <div id="gasolineras" class="poi-list"></div>
+          <div id="areas" class="poi-list"></div>
         </div>
       </div>
     </div>
@@ -76,15 +86,7 @@
     let ultimaActualizacion = 0;
 
     function getWeatherIcon(code) {
-      const icons = {
-        0: "☀️", 1: "🌤️", 2: "⛅", 3: "☁️",
-        45: "🌫️", 48: "🌫️",
-        51: "🌦️", 53: "🌦️", 55: "🌧️",
-        61: "🌧️", 63: "🌧️", 65: "🌧️",
-        71: "🌨️", 73: "🌨️", 75: "❄️",
-        80: "🌦️", 81: "🌧️", 82: "⛈️",
-        95: "⛈️", 96: "⛈️", 99: "⛈️"
-      };
+      const icons = { 0:"☀️", 1:"🌤️", 2:"⛅", 3:"☁️", 45:"🌫️", 48:"🌫️", 51:"🌦️", 53:"🌦️", 55:"🌧️", 61:"🌧️", 63:"🌧️", 65:"🌧️", 71:"🌨️", 73:"🌨️", 75:"❄️", 80:"🌦️", 81:"🌧️", 82:"⛈️", 95:"⛈️", 96:"⛈️", 99:"⛈️" };
       return icons[code] || "❔";
     }
 
@@ -92,18 +94,14 @@
       const ahora = Date.now();
       if (ahora - ultimaActualizacion < 30 * 60 * 1000) return;
       ultimaActualizacion = ahora;
-
-      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=temperature_2m_max,temperature_2m_min,weathercode&timezone=auto`;
-      fetch(url)
-        .then(r => r.json())
-        .then(data => {
-          const cw = data.current_weather;
-          const icono = getWeatherIcon(cw.weathercode);
-          document.getElementById('clima-icono').textContent = icono;
-          document.getElementById('clima-detalles').innerHTML = `${cw.temperature}°C`;
-          document.getElementById('velocidad-viento').textContent = cw.windspeed;
-          document.getElementById('temp-max-dia').textContent = data.daily.temperature_2m_max[0];
-        });
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=temperature_2m_max,weathercode&timezone=auto`;
+      fetch(url).then(r => r.json()).then(data => {
+        const cw = data.current_weather;
+        document.getElementById('clima-icono').textContent = getWeatherIcon(cw.weathercode);
+        document.getElementById('clima-detalles').textContent = `${cw.temperature}°C`;
+        document.getElementById('velocidad-viento').textContent = cw.windspeed;
+        document.getElementById('temp-max-dia').textContent = `${data.daily.temperature_2m_max[0]}°C`;
+      });
     }
 
     function mostrarPOIs(lat, lon) {
@@ -115,38 +113,50 @@
         node["amenity"="fuel"](around:${radius},${lat},${lon});
         node["tourism"="caravan_site"](around:${radius},${lat},${lon});
       );out body;`;
-      fetch(url)
-        .then(r => r.json())
-        .then(data => {
-          const restaurantes = [], gasolineras = [], areas = [];
-          for (const e of data.elements) {
-            const distKm = (getDistance(lat, lon, e.lat, e.lon) / 1000).toFixed(1);
-            const name = e.tags.name || 'Sin nombre';
-            const poi = { name, distKm, lat: e.lat, lon: e.lon };
-            if (e.tags.amenity === 'restaurant') restaurantes.push(poi);
-            else if (e.tags.amenity === 'fuel') gasolineras.push(poi);
-            else if (e.tags.tourism === 'caravan_site') areas.push(poi);
-          }
+      fetch(url).then(r => r.json()).then(data => {
+        const restaurantes = [], gasolineras = [], areas = [];
+        for (const e of data.elements) {
+          const distKm = (getDistance(lat, lon, e.lat, e.lon) / 1000).toFixed(1);
+          const name = e.tags.name || 'Sin nombre';
+          const poi = { name, distKm, lat: e.lat, lon: e.lon };
+          if (e.tags.amenity === 'restaurant') restaurantes.push(poi);
+          else if (e.tags.amenity === 'fuel') gasolineras.push(poi);
+          else if (e.tags.tourism === 'caravan_site') areas.push(poi);
+        }
 
-          function mostrarLista(lista, id, icono, color) {
-            lista.sort((a,b) => parseFloat(a.distKm) - parseFloat(b.distKm));
-            document.getElementById(id).innerHTML = `<strong>${icono} ${id.charAt(0).toUpperCase() + id.slice(1)}</strong><br>` +
-              lista.slice(0,3).map((item,i) => {
-                const marker = L.circleMarker([item.lat, item.lon], {
-                  color,
-                  radius: 8
-                }).addTo(map).bindPopup(item.name);
-                marker.bindTooltip(`${i+1}`, { permanent: true, direction: 'top' });
-                poiMarkers.push(marker);
-                return `<div class="poi-item">${i+1}. ${item.name} (${item.distKm} km)</div>`;
-              }).join('');
-          }
+        function mostrarLista(lista, id, icono, color) {
+          const container = document.getElementById(id);
+          container.innerHTML = lista.sort((a,b) => a.distKm - b.distKm).slice(0,5).map((item, i) => {
+            const marker = L.circleMarker([item.lat, item.lon], { color, radius: 8 }).bindPopup(item.name).addTo(map);
+            marker.bindTooltip(`${i+1}`, { permanent: true, direction: 'top' });
+            marker.poiType = id;
+            poiMarkers.push(marker);
+            return `<div class="poi-item">${i+1}. ${item.name} (${item.distKm} km)</div>`;
+          }).join('');
+        }
 
-          mostrarLista(restaurantes, 'restaurantes', '🍽️', 'green');
-          mostrarLista(gasolineras, 'gasolineras', '⛽', 'blue');
-          mostrarLista(areas, 'areas', '🏕️', 'orange');
-        });
+        mostrarLista(restaurantes, 'restaurantes', '🍽️', 'green');
+        mostrarLista(gasolineras, 'gasolineras', '⛽', 'blue');
+        mostrarLista(areas, 'areas', '🏕️', 'orange');
+
+        filtrarPOIVisibles('restaurantes');
+      });
     }
+
+    function filtrarPOIVisibles(tipo) {
+      poiMarkers.forEach(m => m.remove());
+      poiMarkers.filter(m => m.poiType === tipo).forEach(m => m.addTo(map));
+    }
+
+    document.querySelectorAll('.poi-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.poi-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.poi-list').forEach(l => l.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById(tab.dataset.target).classList.add('active');
+        filtrarPOIVisibles(tab.dataset.target);
+      });
+    });
 
     function getDistance(lat1, lon1, lat2, lon2) {
       const R = 6371e3;
@@ -154,9 +164,7 @@
       const φ2 = lat2 * Math.PI / 180;
       const Δφ = (lat2 - lat1) * Math.PI / 180;
       const Δλ = (lon2 - lon1) * Math.PI / 180;
-      const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-                Math.cos(φ1) * Math.cos(φ2) *
-                Math.sin(Δλ/2) * Math.sin(Δλ/2);
+      const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
       return R * c;
     }
@@ -169,9 +177,7 @@
         document.getElementById('velocidad-vehiculo').textContent = ((speed || 0) * 3.6).toFixed(1);
         mostrarClima(lat, lon);
         mostrarPOIs(lat, lon);
-      }, err => {
-        console.warn("Error GPS:", err.message);
-      }, { enableHighAccuracy: true });
+      }, err => console.warn("Error GPS:", err.message), { enableHighAccuracy: true });
     }
 
     if (navigator.geolocation) {

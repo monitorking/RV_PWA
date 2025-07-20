@@ -16,12 +16,10 @@
     .current-top { display: flex; justify-content: center; font-size: 1.1rem; align-items: center; gap: 1rem; }
     .current-bottom { display: flex; justify-content: space-between; align-items: center; }
     .current-weather-icon { font-size: 3rem; }
-    .current-weather-info, .temp-max { font-size: 1.5rem; font-weight: bold; }
+    .current-weather-info, .temp-max { font-size: 1.5rem; font-weight: normal; }
     .wind-speed, .vehicle-speed { display: flex; align-items: center; gap: 0.25rem; font-size: 1.2rem; }
     .poi-section { padding: 1rem; background: #f9f9f9; }
-    .poi-tabs { display: flex; gap: 1rem; margin-bottom: 1rem; }
-    .poi-tab { cursor: pointer; padding: 0.5rem 1rem; border-radius: 5px; background: #ddd; }
-    .poi-tab.active { background: #bbb; font-weight: bold; }
+    .poi-select { margin-bottom: 1rem; }
     .poi-list { display: none; }
     .poi-list.active { display: block; }
     .poi-item { margin-bottom: 0.5rem; font-size: 1.1rem; }
@@ -54,11 +52,11 @@
       </div>
       <div class="right-pane">
         <div class="poi-section">
-          <div class="poi-tabs">
-            <div class="poi-tab active" data-target="restaurantes">🍽️ Restaurantes</div>
-            <div class="poi-tab" data-target="gasolineras">⛽ Gasolineras</div>
-            <div class="poi-tab" data-target="areas">🏕️ Áreas</div>
-          </div>
+          <select id="poi-select" class="poi-select">
+            <option value="restaurantes">🍽️ Restaurantes</option>
+            <option value="gasolineras">⛽ Gasolineras</option>
+            <option value="areas">🏕️ Áreas</option>
+          </select>
           <div id="restaurantes" class="poi-list active"></div>
           <div id="gasolineras" class="poi-list"></div>
           <div id="areas" class="poi-list"></div>
@@ -112,6 +110,7 @@
         node["amenity"="restaurant"](around:${radius},${lat},${lon});
         node["amenity"="fuel"](around:${radius},${lat},${lon});
         node["tourism"="caravan_site"](around:${radius},${lat},${lon});
+        node["tourism"="camp_site"](around:${radius},${lat},${lon});
       );out body;`;
       fetch(url).then(r => r.json()).then(data => {
         const restaurantes = [], gasolineras = [], areas = [];
@@ -121,10 +120,10 @@
           const poi = { name, distKm, lat: e.lat, lon: e.lon };
           if (e.tags.amenity === 'restaurant') restaurantes.push(poi);
           else if (e.tags.amenity === 'fuel') gasolineras.push(poi);
-          else if (e.tags.tourism === 'caravan_site') areas.push(poi);
+          else if (e.tags.tourism === 'caravan_site' || e.tags.tourism === 'camp_site') areas.push(poi);
         }
 
-        function mostrarLista(lista, id, icono, color) {
+        function mostrarLista(lista, id, color) {
           const container = document.getElementById(id);
           container.innerHTML = lista.sort((a,b) => a.distKm - b.distKm).slice(0,5).map((item, i) => {
             const marker = L.circleMarker([item.lat, item.lon], { color, radius: 8 }).bindPopup(item.name).addTo(map);
@@ -135,12 +134,21 @@
           }).join('');
         }
 
-        mostrarLista(restaurantes, 'restaurantes', '🍽️', 'green');
-        mostrarLista(gasolineras, 'gasolineras', '⛽', 'blue');
-        mostrarLista(areas, 'areas', '🏕️', 'orange');
+        mostrarLista(restaurantes, 'restaurantes', 'green');
+        mostrarLista(gasolineras, 'gasolineras', 'blue');
+        mostrarLista(areas, 'areas', 'orange');
 
-        filtrarPOIVisibles('restaurantes');
+        const selected = localStorage.getItem('categoriaPOI') || 'restaurantes';
+        document.getElementById('poi-select').value = selected;
+        cambiarCategoria(selected);
       });
+    }
+
+    function cambiarCategoria(tipo) {
+      document.querySelectorAll('.poi-list').forEach(l => l.classList.remove('active'));
+      document.getElementById(tipo).classList.add('active');
+      localStorage.setItem('categoriaPOI', tipo);
+      filtrarPOIVisibles(tipo);
     }
 
     function filtrarPOIVisibles(tipo) {
@@ -148,15 +156,7 @@
       poiMarkers.filter(m => m.poiType === tipo).forEach(m => m.addTo(map));
     }
 
-    document.querySelectorAll('.poi-tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        document.querySelectorAll('.poi-tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.poi-list').forEach(l => l.classList.remove('active'));
-        tab.classList.add('active');
-        document.getElementById(tab.dataset.target).classList.add('active');
-        filtrarPOIVisibles(tab.dataset.target);
-      });
-    });
+    document.getElementById('poi-select').addEventListener('change', e => cambiarCategoria(e.target.value));
 
     function getDistance(lat1, lon1, lat2, lon2) {
       const R = 6371e3;

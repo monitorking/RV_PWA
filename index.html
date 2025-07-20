@@ -37,7 +37,7 @@
               <div class="current-weather-icon" id="clima-icono">☀️</div>
               <div style="display: flex; flex-direction: column;">
                 <div class="current-weather-info" id="clima-detalles">--</div>
-                <div class="temp-max">🌡️ Max: <span id="temp-max-dia">--</span>°C</div>
+                <div class="temp-max"><span id="temp-max-dia">--</span>°C</div>
               </div>
             </div>
             <div style="display: flex; flex-direction: column; gap: 0.5rem;">
@@ -46,13 +46,14 @@
             </div>
           </div>
         </div>
+      </div>
+      <div class="right-pane">
         <div class="poi-section">
           <div id="restaurantes"></div>
           <div id="gasolineras"></div>
           <div id="areas"></div>
         </div>
       </div>
-      <div class="right-pane"></div>
     </div>
   </main>
 
@@ -174,8 +175,10 @@
     }
 
     if (navigator.geolocation) {
-      actualizarUbicacion();
-      setInterval(actualizarUbicacion, 60000);
+      window.addEventListener('load', () => {
+        actualizarUbicacion();
+        setInterval(actualizarUbicacion, 60000);
+      });
     } else {
       alert("Geolocalización no soportada");
     }

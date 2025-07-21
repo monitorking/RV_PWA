@@ -18,10 +18,6 @@
     .current-weather-icon { font-size: 3rem; }
     .current-weather-info, .temp-max { font-size: 1.5rem; font-weight: normal; }
     .wind-speed, .vehicle-speed { display: flex; align-items: center; gap: 0.25rem; font-size: 1.2rem; }
-    .poi-section { padding: 1rem; background: #f9f9f9; }
-    .poi-list { display: none; }
-    .poi-list.active { display: block; }
-    .poi-item { margin-bottom: 0.5rem; font-size: 1.1rem; cursor: pointer; }
     .forecast { margin-top: 1rem; background: #eef; padding: 1rem; border-radius: 8px; }
     .forecast-day { margin-bottom: 0.5rem; }
   </style>
@@ -52,13 +48,10 @@
       <div class="right-pane">
         <div class="poi-section">
           <select id="categoria-poi">
-            <option value="restaurantes">🍽️ Restaurantes</option>
             <option value="gasolineras">⛽ Gasolineras</option>
-            <option value="areas">🏕️ Áreas</option>
+            <option value="areas">🏕️ Áreas de autocaravanas</option>
           </select>
-          <div id="restaurantes" class="poi-list"></div>
-          <div id="gasolineras" class="poi-list"></div>
-          <div id="areas" class="poi-list"></div>
+          <div id="lista-poi"></div>
         </div>
       </div>
     </div>
@@ -115,16 +108,13 @@
     }
 
     function mostrarPOIs(lat, lon) {
-      const categoria = localStorage.getItem('categoria-poi') || 'restaurantes';
+      const categoria = localStorage.getItem('categoria-poi') || 'gasolineras';
       document.getElementById('categoria-poi').value = categoria;
-      document.querySelectorAll('.poi-list').forEach(e => e.classList.remove('active'));
-      document.getElementById(categoria).classList.add('active');
-
+      document.getElementById('lista-poi').innerHTML = '';
       poiMarkers.forEach(m => map.removeLayer(m));
       poiMarkers = [];
 
       const filtros = {
-        restaurantes: ['amenity=restaurant'],
         gasolineras: ['amenity=fuel'],
         areas: ['tourism=camp_site', 'tourism=caravan_site', 'amenity=sanitary_dump_station']
       };
@@ -138,8 +128,7 @@
       const query = `[out:json];(${queryParts.join(';')});out body;`;
 
       fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`).then(r => r.json()).then(data => {
-        const lista = document.getElementById(categoria);
-        lista.innerHTML = '';
+        const lista = document.getElementById('lista-poi');
         const ordenados = data.elements.map(e => {
           const distancia = getDistanceFromLatLonInKm(lat, lon, e.lat, e.lon);
           return { ...e, distancia };
@@ -154,7 +143,7 @@
           item.addEventListener('click', () => map.setView([e.lat, e.lon], 15));
           lista.appendChild(item);
 
-          const color = categoria === 'restaurantes' ? 'green' : categoria === 'gasolineras' ? 'blue' : 'orange';
+          const color = categoria === 'gasolineras' ? 'blue' : 'orange';
           const icon = L.divIcon({ html: `<b style="color:${color};font-size:1.2rem;">${i + 1}</b>`, className: '' });
           const marker = L.marker([e.lat, e.lon], { icon }).addTo(map).bindPopup(nombre);
           poiMarkers.push(marker);

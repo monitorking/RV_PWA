@@ -74,7 +74,7 @@
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
-    let marker = L.marker([0, 0], { color: 'red' }).addTo(map);
+    let marker = L.marker([0, 0], { icon: L.icon({ iconUrl: 'https://maps.gstatic.com/mapfiles/ms2/micons/red-dot.png', iconSize: [32, 32] }) }).addTo(map);
     let lastCenter = [0, 0];
 
     function mostrarFechaActual() {
@@ -109,7 +109,7 @@
           const fecha = new Date(dia);
           return `<div class="forecast-day">${diasSemana[fecha.getDay()]} ${fecha.getDate()}: ${data.daily.temperature_2m_max[i]}°C ${getWeatherIcon(data.daily.weathercode[i])}</div>`;
         }).join('');
-        document.getElementById('pronostico').innerHTML = `<h3>Próximos días</h3>${forecastHTML}`;
+        document.getElementById('pronostico').innerHTML = forecastHTML;
       });
     }
 
@@ -124,13 +124,13 @@
         document.getElementById('velocidad-vehiculo').textContent = ((speed || 0) * 3.6).toFixed(1);
         mostrarFechaActual();
         mostrarClima(lat, lon);
-        // mostrarPOIs(lat, lon); // Si tienes la función, descomenta
+        // mostrarPOIs(lat, lon); // restaurar si la función está implementada
       }, err => console.warn("Error GPS:", err.message), { enableHighAccuracy: true });
     }
 
     window.onload = () => {
       actualizarUbicacion();
-      setInterval(actualizarUbicacion, 60000); // cada minuto
+      setInterval(actualizarUbicacion, 60000);
     };
   </script>
 </body>

@@ -140,8 +140,9 @@
           item.className = 'poi-item';
           item.innerHTML = `${i + 1}. ${nombre} - ${distancia} km`;
           lista.appendChild(item);
+
           const color = categoria === 'restaurantes' ? 'green' : categoria === 'gasolineras' ? 'blue' : 'orange';
-          const icon = L.divIcon({ html: `<b style="color:${color}">${i + 1}</b>`, className: '' });
+          const icon = L.divIcon({ html: `<b style="color:${color};font-size:1.2rem;">${i + 1}</b>`, className: '' });
           const marker = L.marker([e.lat, e.lon], { icon }).addTo(map);
           poiMarkers.push(marker);
         });

@@ -126,16 +126,27 @@
       const filtros = {
         restaurantes: 'amenity=restaurant',
         gasolineras: 'amenity=fuel',
-        areas: '(tourism=camp_site OR tourism=caravan_site OR amenity=sanitary_dump_station)'
+        areas: 'tourism=camp_site,tourism=caravan_site,amenity=sanitary_dump_station'
       };
 
-      const query = `[out:json];node(around:5000,${lat},${lon})[${filtros[categoria]}];out body 5;`;
+      const keys = filtros[categoria].split(',');
+      const queryParts = keys.map(kv => {
+        const [k, v] = kv.split('=');
+        return `node(around:5000,${lat},${lon})["${k}"="${v}"]`;
+      });
+      const query = `[out:json];(${queryParts.join(';')});out body;`;
+
       fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`).then(r => r.json()).then(data => {
         const lista = document.getElementById(categoria);
         lista.innerHTML = '';
-        data.elements.slice(0, 5).forEach((e, i) => {
+        const ordenados = data.elements.map(e => {
+          const distancia = getDistanceFromLatLonInKm(lat, lon, e.lat, e.lon);
+          return { ...e, distancia };
+        }).sort((a, b) => a.distancia - b.distancia).slice(0, 5);
+
+        ordenados.forEach((e, i) => {
           const nombre = e.tags.name || 'Sin nombre';
-          const distancia = Math.round(getDistanceFromLatLonInKm(lat, lon, e.lat, e.lon) * 10) / 10;
+          const distancia = Math.round(e.distancia * 10) / 10;
           const item = document.createElement('div');
           item.className = 'poi-item';
           item.innerHTML = `${i + 1}. ${nombre} - ${distancia} km`;
@@ -143,7 +154,7 @@
 
           const color = categoria === 'restaurantes' ? 'green' : categoria === 'gasolineras' ? 'blue' : 'orange';
           const icon = L.divIcon({ html: `<b style="color:${color};font-size:1.2rem;">${i + 1}</b>`, className: '' });
-          const marker = L.marker([e.lat, e.lon], { icon }).addTo(map);
+          const marker = L.marker([e.lat, e.lon], { icon }).addTo(map).bindPopup(nombre);
           poiMarkers.push(marker);
         });
       });
@@ -187,3 +198,4 @@
   </script>
 </body>
 </html>
+

@@ -16,7 +16,7 @@
     .current-top { font-size: 1.1rem; }
     .current-bottom { display: flex; justify-content: space-between; align-items: center; }
     .current-weather-icon { font-size: 3rem; }
-    .current-weather-info, .temp-max { font-size: 1.5rem; }
+    .current-weather-info, .temp-max { font-size: 1.5rem; font-weight: normal; }
     .wind-speed, .vehicle-speed { display: flex; align-items: center; gap: 0.25rem; font-size: 1.2rem; }
     .poi-section { padding: 1rem; background: #f9f9f9; }
     .poi-list { display: none; }
@@ -32,7 +32,7 @@
     <div class="bottom-half">
       <div class="left-pane">
         <div class="current-weather" id="clima">
-          <div class="current-top" id="descripcion-clima">Condiciones actuales: --</div>
+          <div class="current-top" id="fecha-hoy">--</div>
           <div class="current-bottom">
             <div style="display: flex; align-items: center; gap: 1rem;">
               <div class="current-weather-icon" id="clima-icono">☀️</div>
@@ -67,24 +67,19 @@
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <script>
-    const map = L.map('map').setView([0, 0], 2);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-    const marker = L.marker([0, 0], { icon: L.icon({ iconUrl: 'https://maps.google.com/mapfiles/ms/icons/red-dot.png' }) }).addTo(map);
+    const diasSemana = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+    const meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 
-    let poiMarkers = [];
-    let lastCenter = [0, 0];
-
-    function getWeatherIcon(code) {
-      const icons = { 0:"☀️", 1:"🌤️", 2:"⛅", 3:"☁️", 45:"🌫️", 48:"🌫️", 51:"🌦️", 53:"🌦️", 55:"🌧️", 61:"🌧️", 63:"🌧️", 65:"🌧️", 71:"🌨️", 73:"🌨️", 75:"❄️", 80:"🌦️", 81:"🌧️", 82:"⛈️", 95:"⛈️", 96:"⛈️", 99:"⛈️" };
-      return icons[code] || "❔";
+    function mostrarFechaActual() {
+      const hoy = new Date();
+      const texto = `${diasSemana[hoy.getDay()]}, ${hoy.getDate()} de ${meses[hoy.getMonth()]} de ${hoy.getFullYear()}`;
+      document.getElementById('fecha-hoy').textContent = texto;
     }
 
     function mostrarClima(lat, lon) {
       const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=temperature_2m_max,weathercode&timezone=auto`;
       fetch(url).then(r => r.json()).then(data => {
         const cw = data.current_weather;
-        const weatherText = `Condiciones actuales: ${cw.temperature}°C, viento de ${cw.windspeed} km/h`;
-        document.getElementById('descripcion-clima').textContent = weatherText;
         document.getElementById('clima-icono').textContent = getWeatherIcon(cw.weathercode);
         document.getElementById('clima-detalles').textContent = `${cw.temperature}°C`;
         document.getElementById('velocidad-viento').textContent = cw.windspeed;
@@ -92,75 +87,11 @@
 
         const forecastHTML = data.daily.time.map((dia, i) => {
           if (i === 0) return '';
-          return `<div class="forecast-day">${dia}: ${data.daily.temperature_2m_max[i]}°C ${getWeatherIcon(data.daily.weathercode[i])}</div>`;
+          const fecha = new Date(dia);
+          return `<div class="forecast-day">${diasSemana[fecha.getDay()]} ${fecha.getDate()}: ${data.daily.temperature_2m_max[i]}°C ${getWeatherIcon(data.daily.weathercode[i])}</div>`;
         }).join('');
         document.getElementById('pronostico').innerHTML = `<h3>Próximos días</h3>${forecastHTML}`;
       });
-    }
-
-    function mostrarPOIs(lat, lon) {
-      poiMarkers.forEach(m => map.removeLayer(m));
-      poiMarkers = [];
-      const radius = 5000;
-      const url = `https://overpass-api.de/api/interpreter?data=[out:json];(
-        node["amenity"="restaurant"](around:${radius},${lat},${lon});
-        node["amenity"="fuel"](around:${radius},${lat},${lon});
-        node["tourism"="caravan_site"](around:${radius},${lat},${lon});
-        node["tourism"="camp_site"](around:${radius},${lat},${lon});
-        node["amenity"="sanitary_dump_station"](around:${radius},${lat},${lon});
-      );out body;`;
-      fetch(url).then(r => r.json()).then(data => {
-        const restaurantes = [], gasolineras = [], areas = [];
-        for (const e of data.elements) {
-          const distKm = (getDistance(lat, lon, e.lat, e.lon) / 1000).toFixed(1);
-          const name = e.tags.name || 'Sin nombre';
-          const poi = { name, distKm, lat: e.lat, lon: e.lon };
-          if (e.tags.amenity === 'restaurant') restaurantes.push(poi);
-          else if (e.tags.amenity === 'fuel') gasolineras.push(poi);
-          else if (['caravan_site', 'camp_site'].includes(e.tags.tourism) || e.tags.amenity === 'sanitary_dump_station') areas.push(poi);
-        }
-
-        function mostrarLista(lista, id, color) {
-          const container = document.getElementById(id);
-          container.innerHTML = lista.sort((a,b) => a.distKm - b.distKm).slice(0,5).map((item, i) => {
-            const marker = L.circleMarker([item.lat, item.lon], { color, radius: 8 }).bindPopup(item.name);
-            marker.bindTooltip(`${i+1}`, { permanent: true, direction: 'top' });
-            marker.poiType = id;
-            poiMarkers.push(marker);
-            return `<div class="poi-item">${i+1}. ${item.name} (${item.distKm} km)</div>`;
-          }).join('');
-        }
-
-        mostrarLista(restaurantes, 'restaurantes', 'green');
-        mostrarLista(gasolineras, 'gasolineras', 'blue');
-        mostrarLista(areas, 'areas', 'orange');
-
-        filtrarPOIVisibles(document.getElementById('categoria-poi').value);
-      });
-    }
-
-    function filtrarPOIVisibles(tipo) {
-      poiMarkers.forEach(m => map.removeLayer(m));
-      poiMarkers.filter(m => m.poiType === tipo).forEach(m => m.addTo(map));
-    }
-
-    document.getElementById('categoria-poi').addEventListener('change', e => {
-      const val = e.target.value;
-      localStorage.setItem('poiSeleccionado', val);
-      document.querySelectorAll('.poi-list').forEach(div => div.classList.remove('active'));
-      document.getElementById(val).classList.add('active');
-      filtrarPOIVisibles(val);
-    });
-
-    function getDistance(lat1, lon1, lat2, lon2) {
-      const R = 6371e3;
-      const φ1 = lat1 * Math.PI / 180;
-      const φ2 = lat2 * Math.PI / 180;
-      const Δφ = (lat2 - lat1) * Math.PI / 180;
-      const Δλ = (lon2 - lon1) * Math.PI / 180;
-      const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-      return R * c;
     }
 
     function actualizarUbicacion() {
@@ -172,32 +103,10 @@
         }
         lastCenter = [lat, lon];
         document.getElementById('velocidad-vehiculo').textContent = ((speed || 0) * 3.6).toFixed(1);
+        mostrarFechaActual();
         mostrarClima(lat, lon);
         mostrarPOIs(lat, lon);
       }, err => console.warn("Error GPS:", err.message), { enableHighAccuracy: true });
-    }
-
-    if (navigator.geolocation) {
-      window.addEventListener('load', () => {
-        const storedPOI = localStorage.getItem('poiSeleccionado');
-        if (storedPOI) {
-          document.getElementById('categoria-poi').value = storedPOI;
-          document.querySelectorAll('.poi-list').forEach(div => div.classList.remove('active'));
-          document.getElementById(storedPOI).classList.add('active');
-        }
-        actualizarUbicacion();
-        setInterval(actualizarUbicacion, 60000);
-      });
-    } else {
-      alert("Geolocalización no soportada");
-    }
-
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('service-worker.js')
-          .then(reg => console.log('SW registrado', reg))
-          .catch(err => console.error('SW error', err));
-      });
     }
   </script>
 </body>

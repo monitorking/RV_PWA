@@ -21,7 +21,7 @@
     .poi-section { padding: 1rem; background: #f9f9f9; }
     .poi-list { display: none; }
     .poi-list.active { display: block; }
-    .poi-item { margin-bottom: 0.5rem; font-size: 1.1rem; }
+    .poi-item { margin-bottom: 0.5rem; font-size: 1.1rem; cursor: pointer; }
     .forecast { margin-top: 1rem; background: #eef; padding: 1rem; border-radius: 8px; }
     .forecast-day { margin-bottom: 0.5rem; }
   </style>
@@ -124,16 +124,17 @@
       poiMarkers = [];
 
       const filtros = {
-        restaurantes: 'amenity=restaurant',
-        gasolineras: 'amenity=fuel',
-        areas: 'tourism=camp_site,tourism=caravan_site,amenity=sanitary_dump_station'
+        restaurantes: ['amenity=restaurant'],
+        gasolineras: ['amenity=fuel'],
+        areas: ['tourism=camp_site', 'tourism=caravan_site', 'amenity=sanitary_dump_station']
       };
 
-      const keys = filtros[categoria].split(',');
+      const keys = filtros[categoria];
       const queryParts = keys.map(kv => {
         const [k, v] = kv.split('=');
         return `node(around:5000,${lat},${lon})["${k}"="${v}"]`;
       });
+
       const query = `[out:json];(${queryParts.join(';')});out body;`;
 
       fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`).then(r => r.json()).then(data => {
@@ -150,6 +151,7 @@
           const item = document.createElement('div');
           item.className = 'poi-item';
           item.innerHTML = `${i + 1}. ${nombre} - ${distancia} km`;
+          item.addEventListener('click', () => map.setView([e.lat, e.lon], 15));
           lista.appendChild(item);
 
           const color = categoria === 'restaurantes' ? 'green' : categoria === 'gasolineras' ? 'blue' : 'orange';
@@ -198,4 +200,3 @@
   </script>
 </body>
 </html>
-

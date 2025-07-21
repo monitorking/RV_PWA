@@ -13,16 +13,17 @@
     .bottom-half { flex: 1; display: flex; }
     .left-pane, .right-pane { flex: 1; padding: 1rem; box-sizing: border-box; overflow-y: auto; }
     .current-weather { background: #f0f0f0; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
-    .current-top { display: flex; justify-content: center; font-size: 1.1rem; align-items: center; gap: 1rem; }
+    .current-top { font-size: 1.1rem; }
     .current-bottom { display: flex; justify-content: space-between; align-items: center; }
     .current-weather-icon { font-size: 3rem; }
-    .current-weather-info, .temp-max { font-size: 1.5rem; font-weight: normal; }
+    .current-weather-info, .temp-max { font-size: 1.5rem; }
     .wind-speed, .vehicle-speed { display: flex; align-items: center; gap: 0.25rem; font-size: 1.2rem; }
     .poi-section { padding: 1rem; background: #f9f9f9; }
-    .poi-select { margin-bottom: 1rem; }
     .poi-list { display: none; }
     .poi-list.active { display: block; }
     .poi-item { margin-bottom: 0.5rem; font-size: 1.1rem; }
+    .forecast { margin-top: 1rem; background: #eef; padding: 1rem; border-radius: 8px; }
+    .forecast-day { margin-bottom: 0.5rem; }
   </style>
 </head>
 <body>
@@ -31,10 +32,7 @@
     <div class="bottom-half">
       <div class="left-pane">
         <div class="current-weather" id="clima">
-          <div class="current-top">
-            <div id="fecha"></div>
-            <div id="hora"></div>
-          </div>
+          <div class="current-top" id="descripcion-clima">Condiciones actuales: --</div>
           <div class="current-bottom">
             <div style="display: flex; align-items: center; gap: 1rem;">
               <div class="current-weather-icon" id="clima-icono">☀️</div>
@@ -48,11 +46,12 @@
               <div class="vehicle-speed">🚗 <span id="velocidad-vehiculo">0</span> km/h</div>
             </div>
           </div>
+          <div class="forecast" id="pronostico"></div>
         </div>
       </div>
       <div class="right-pane">
         <div class="poi-section">
-          <select id="poi-select" class="poi-select">
+          <select id="categoria-poi">
             <option value="restaurantes">🍽️ Restaurantes</option>
             <option value="gasolineras">⛽ Gasolineras</option>
             <option value="areas">🏕️ Áreas</option>
@@ -73,15 +72,7 @@
     const marker = L.marker([0, 0], { icon: L.icon({ iconUrl: 'https://maps.google.com/mapfiles/ms/icons/red-dot.png' }) }).addTo(map);
 
     let poiMarkers = [];
-    const horaSpan = document.getElementById('hora');
-    const fechaSpan = document.getElementById('fecha');
-    setInterval(() => {
-      const ahora = new Date();
-      horaSpan.innerHTML = `⏰ ${ahora.toLocaleTimeString()}`;
-      fechaSpan.innerHTML = `🗓️ ${ahora.toLocaleDateString()}`;
-    }, 1000);
-
-    let ultimaActualizacion = 0;
+    let lastCenter = [0, 0];
 
     function getWeatherIcon(code) {
       const icons = { 0:"☀️", 1:"🌤️", 2:"⛅", 3:"☁️", 45:"🌫️", 48:"🌫️", 51:"🌦️", 53:"🌦️", 55:"🌧️", 61:"🌧️", 63:"🌧️", 65:"🌧️", 71:"🌨️", 73:"🌨️", 75:"❄️", 80:"🌦️", 81:"🌧️", 82:"⛈️", 95:"⛈️", 96:"⛈️", 99:"⛈️" };
@@ -89,16 +80,21 @@
     }
 
     function mostrarClima(lat, lon) {
-      const ahora = Date.now();
-      if (ahora - ultimaActualizacion < 30 * 60 * 1000) return;
-      ultimaActualizacion = ahora;
       const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=temperature_2m_max,weathercode&timezone=auto`;
       fetch(url).then(r => r.json()).then(data => {
         const cw = data.current_weather;
+        const weatherText = `Condiciones actuales: ${cw.temperature}°C, viento de ${cw.windspeed} km/h`;
+        document.getElementById('descripcion-clima').textContent = weatherText;
         document.getElementById('clima-icono').textContent = getWeatherIcon(cw.weathercode);
         document.getElementById('clima-detalles').textContent = `${cw.temperature}°C`;
         document.getElementById('velocidad-viento').textContent = cw.windspeed;
         document.getElementById('temp-max-dia').textContent = `${data.daily.temperature_2m_max[0]}°C`;
+
+        const forecastHTML = data.daily.time.map((dia, i) => {
+          if (i === 0) return '';
+          return `<div class="forecast-day">${dia}: ${data.daily.temperature_2m_max[i]}°C ${getWeatherIcon(data.daily.weathercode[i])}</div>`;
+        }).join('');
+        document.getElementById('pronostico').innerHTML = `<h3>Próximos días</h3>${forecastHTML}`;
       });
     }
 
@@ -111,6 +107,7 @@
         node["amenity"="fuel"](around:${radius},${lat},${lon});
         node["tourism"="caravan_site"](around:${radius},${lat},${lon});
         node["tourism"="camp_site"](around:${radius},${lat},${lon});
+        node["amenity"="sanitary_dump_station"](around:${radius},${lat},${lon});
       );out body;`;
       fetch(url).then(r => r.json()).then(data => {
         const restaurantes = [], gasolineras = [], areas = [];
@@ -120,13 +117,13 @@
           const poi = { name, distKm, lat: e.lat, lon: e.lon };
           if (e.tags.amenity === 'restaurant') restaurantes.push(poi);
           else if (e.tags.amenity === 'fuel') gasolineras.push(poi);
-          else if (e.tags.tourism === 'caravan_site' || e.tags.tourism === 'camp_site') areas.push(poi);
+          else if (['caravan_site', 'camp_site'].includes(e.tags.tourism) || e.tags.amenity === 'sanitary_dump_station') areas.push(poi);
         }
 
         function mostrarLista(lista, id, color) {
           const container = document.getElementById(id);
           container.innerHTML = lista.sort((a,b) => a.distKm - b.distKm).slice(0,5).map((item, i) => {
-            const marker = L.circleMarker([item.lat, item.lon], { color, radius: 8 }).bindPopup(item.name).addTo(map);
+            const marker = L.circleMarker([item.lat, item.lon], { color, radius: 8 }).bindPopup(item.name);
             marker.bindTooltip(`${i+1}`, { permanent: true, direction: 'top' });
             marker.poiType = id;
             poiMarkers.push(marker);
@@ -138,25 +135,22 @@
         mostrarLista(gasolineras, 'gasolineras', 'blue');
         mostrarLista(areas, 'areas', 'orange');
 
-        const selected = localStorage.getItem('categoriaPOI') || 'restaurantes';
-        document.getElementById('poi-select').value = selected;
-        cambiarCategoria(selected);
+        filtrarPOIVisibles(document.getElementById('categoria-poi').value);
       });
     }
 
-    function cambiarCategoria(tipo) {
-      document.querySelectorAll('.poi-list').forEach(l => l.classList.remove('active'));
-      document.getElementById(tipo).classList.add('active');
-      localStorage.setItem('categoriaPOI', tipo);
-      filtrarPOIVisibles(tipo);
-    }
-
     function filtrarPOIVisibles(tipo) {
-      poiMarkers.forEach(m => m.remove());
+      poiMarkers.forEach(m => map.removeLayer(m));
       poiMarkers.filter(m => m.poiType === tipo).forEach(m => m.addTo(map));
     }
 
-    document.getElementById('poi-select').addEventListener('change', e => cambiarCategoria(e.target.value));
+    document.getElementById('categoria-poi').addEventListener('change', e => {
+      const val = e.target.value;
+      localStorage.setItem('poiSeleccionado', val);
+      document.querySelectorAll('.poi-list').forEach(div => div.classList.remove('active'));
+      document.getElementById(val).classList.add('active');
+      filtrarPOIVisibles(val);
+    });
 
     function getDistance(lat1, lon1, lat2, lon2) {
       const R = 6371e3;
@@ -173,7 +167,10 @@
       navigator.geolocation.getCurrentPosition(pos => {
         const { latitude: lat, longitude: lon, speed } = pos.coords;
         marker.setLatLng([lat, lon]);
-        map.setView([lat, lon], 12);
+        if (lastCenter[0] === 0 && lastCenter[1] === 0) {
+          map.setView([lat, lon], 12);
+        }
+        lastCenter = [lat, lon];
         document.getElementById('velocidad-vehiculo').textContent = ((speed || 0) * 3.6).toFixed(1);
         mostrarClima(lat, lon);
         mostrarPOIs(lat, lon);
@@ -182,6 +179,12 @@
 
     if (navigator.geolocation) {
       window.addEventListener('load', () => {
+        const storedPOI = localStorage.getItem('poiSeleccionado');
+        if (storedPOI) {
+          document.getElementById('categoria-poi').value = storedPOI;
+          document.querySelectorAll('.poi-list').forEach(div => div.classList.remove('active'));
+          document.getElementById(storedPOI).classList.add('active');
+        }
         actualizarUbicacion();
         setInterval(actualizarUbicacion, 60000);
       });

@@ -56,7 +56,7 @@
             <option value="gasolineras">⛽ Gasolineras</option>
             <option value="areas">🏕️ Áreas</option>
           </select>
-          <div id="restaurantes" class="poi-list active"></div>
+          <div id="restaurantes" class="poi-list"></div>
           <div id="gasolineras" class="poi-list"></div>
           <div id="areas" class="poi-list"></div>
         </div>
@@ -124,9 +124,22 @@
         document.getElementById('velocidad-vehiculo').textContent = ((speed || 0) * 3.6).toFixed(1);
         mostrarFechaActual();
         mostrarClima(lat, lon);
-        // mostrarPOIs(lat, lon); // restaurar si la función está implementada
+        mostrarPOIs(lat, lon);
       }, err => console.warn("Error GPS:", err.message), { enableHighAccuracy: true });
     }
+
+    function mostrarPOIs(lat, lon) {
+      const categoria = localStorage.getItem('categoria-poi') || 'restaurantes';
+      document.getElementById('categoria-poi').value = categoria;
+      document.querySelectorAll('.poi-list').forEach(e => e.classList.remove('active'));
+      document.getElementById(categoria).classList.add('active');
+      // Aquí iría la lógica para mostrar los POIs en el mapa y en la lista...
+    }
+
+    document.getElementById('categoria-poi').addEventListener('change', (e) => {
+      localStorage.setItem('categoria-poi', e.target.value);
+      mostrarPOIs(lastCenter[0], lastCenter[1]);
+    });
 
     window.onload = () => {
       actualizarUbicacion();

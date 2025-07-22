@@ -4,22 +4,38 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Clima en ruta</title>
-  <link rel="manifest" href="manifest.json">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <style>
     body { font-family: sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; }
     main { flex: 1; display: flex; flex-direction: column; }
     #map { flex: 1; min-height: 50%; }
     .bottom-half { flex: 1; display: flex; }
-    .left-pane, .right-pane { flex: 1; padding: 1rem; box-sizing: border-box; overflow-y: auto; }
-    .current-weather { background: #f0f0f0; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
-    .current-top { font-size: 1.1rem; }
+    .left-pane, .right-pane {
+      flex: 1; padding: 1rem; box-sizing: border-box; overflow-y: auto;
+      background: #f9f9f9; border-right: 1px solid #ccc;
+    }
+    .right-pane { background: #fff; border-right: none; }
+    .forecast-grid { display: flex; gap: 1rem; overflow-x: auto; margin-bottom: 1rem; }
+    .forecast-day {
+      flex: 0 0 auto; padding: 0.5rem; background: #eaeaea; border-radius: 8px;
+      text-align: center; box-shadow: 1px 1px 5px rgba(0,0,0,0.1);
+    }
+    .forecast-day span { font-size: 2rem; display: block; }
+    .current-weather {
+      background: #dfefff; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;
+      display: flex; flex-direction: column; gap: 0.5rem;
+    }
+    .current-top { display: flex; justify-content: center; font-size: 1.1rem; align-items: center; gap: 1rem; }
     .current-bottom { display: flex; justify-content: space-between; align-items: center; }
     .current-weather-icon { font-size: 3rem; }
-    .current-weather-info, .temp-max { font-size: 1.5rem; font-weight: normal; }
+    .current-weather-info { font-size: 1.5rem; font-weight: bold; }
     .wind-speed, .vehicle-speed { display: flex; align-items: center; gap: 0.25rem; font-size: 1.2rem; }
-    .forecast { margin-top: 1rem; background: #eef; padding: 1rem; border-radius: 8px; }
-    .forecast-day { margin-bottom: 0.5rem; }
+    canvas { max-width: 100%; height: auto; }
+    .poi-section { padding: 1rem; background: #f0f0f0; border-radius: 8px; margin-top: 1rem; }
+    .poi-item { margin-bottom: 0.5rem; font-size: 1.1rem; }
+    .loading { font-style: italic; color: gray; }
   </style>
 </head>
 <body>
@@ -28,163 +44,170 @@
     <div class="bottom-half">
       <div class="left-pane">
         <div class="current-weather" id="clima">
-          <div class="current-top" id="fecha-hoy">--</div>
+          <div class="current-top">
+            <div id="fecha"></div>
+            <div id="hora"></div>
+          </div>
           <div class="current-bottom">
             <div style="display: flex; align-items: center; gap: 1rem;">
               <div class="current-weather-icon" id="clima-icono">☀️</div>
-              <div style="display: flex; flex-direction: column;">
-                <div class="current-weather-info" id="clima-detalles">--</div>
-                <div class="temp-max" id="temp-max-dia">--°C</div>
-              </div>
+              <div class="current-weather-info" id="clima-detalles">--</div>
             </div>
             <div style="display: flex; flex-direction: column; gap: 0.5rem;">
               <div class="wind-speed">🌬️ <span id="velocidad-viento">0</span> km/h</div>
               <div class="vehicle-speed">🚗 <span id="velocidad-vehiculo">0</span> km/h</div>
             </div>
           </div>
-          <div class="forecast" id="pronostico"></div>
+        </div>
+        <div id="forecast" class="forecast-grid"></div>
+        <div class="poi-section">
+          <div id="restaurantes"><span class="loading">Cargando restaurantes...</span></div>
+          <div id="gasolineras"><span class="loading">Cargando gasolineras...</span></div>
+          <div id="areas"><span class="loading">Cargando áreas de descanso...</span></div>
+          <div id="hospitales"><span class="loading">Cargando hospitales...</span></div>
         </div>
       </div>
       <div class="right-pane">
-        <div class="poi-section">
-          <select id="categoria-poi">
-            <option value="gasolineras">⛽ Gasolineras</option>
-            <option value="areas">🏕️ Áreas de autocaravanas</option>
-          </select>
-          <div id="lista-poi"></div>
-        </div>
+        <canvas id="chartHoras"></canvas>
       </div>
     </div>
   </main>
 
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <script>
-    const diasSemana = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
-    const meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-
-    let map = L.map('map').setView([0, 0], 12);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
-    let marker = L.marker([0, 0], { icon: L.icon({ iconUrl: 'https://maps.gstatic.com/mapfiles/ms2/micons/red-dot.png', iconSize: [32, 32] }) }).addTo(map);
-    let lastCenter = [0, 0];
+    const map = L.map('map').setView([0, 0], 2);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    const marker = L.marker([0, 0]).addTo(map);
     let poiMarkers = [];
 
-    function mostrarFechaActual() {
-      const hoy = new Date();
-      const texto = `${diasSemana[hoy.getDay()]}, ${hoy.getDate()} de ${meses[hoy.getMonth()]} de ${hoy.getFullYear()}`;
-      document.getElementById('fecha-hoy').textContent = texto;
-    }
+    const horaSpan = document.getElementById('hora');
+    const fechaSpan = document.getElementById('fecha');
+    setInterval(() => {
+      const ahora = new Date();
+      horaSpan.innerHTML = `⏰ ${ahora.toLocaleTimeString()}`;
+      fechaSpan.innerHTML = `🗓️ ${ahora.toLocaleDateString()}`;
+    }, 1000);
+
+    const chartCtx = document.getElementById('chartHoras').getContext('2d');
+    let tempChart;
+    let ultimaActualizacion = 0;
 
     function getWeatherIcon(code) {
       const icons = {
-        0: '☀️', 1: '🌤️', 2: '⛅', 3: '☁️', 45: '🌫️', 48: '🌫️',
-        51: '🌦️', 53: '🌦️', 55: '🌧️', 56: '🌧️', 57: '🌧️',
-        61: '🌧️', 63: '🌧️', 65: '🌧️', 66: '🌨️', 67: '🌨️',
-        71: '🌨️', 73: '🌨️', 75: '🌨️', 77: '🌨️',
-        80: '🌧️', 81: '🌧️', 82: '🌧️',
-        85: '🌨️', 86: '🌨️', 95: '⛈️', 96: '⛈️', 99: '⛈️'
+        0: "☀️", 1: "🌤️", 2: "⛅", 3: "☁️", 45: "🌫️", 48: "🌫️",
+        51: "🌦️", 53: "🌦️", 55: "🌧️", 61: "🌧️", 63: "🌧️", 65: "🌧️",
+        71: "🌨️", 73: "🌨️", 75: "❄️", 80: "🌦️", 81: "🌧️", 82: "⛈️",
+        95: "⛈️", 96: "⛈️", 99: "⛈️"
       };
-      return icons[code] || '❓';
+      return icons[code] || "❔";
     }
 
     function mostrarClima(lat, lon) {
-      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=temperature_2m_max,weathercode&timezone=auto`;
-      fetch(url).then(r => r.json()).then(data => {
-        const cw = data.current_weather;
-        document.getElementById('clima-icono').textContent = getWeatherIcon(cw.weathercode);
-        document.getElementById('clima-detalles').textContent = `${cw.temperature}°C`;
-        document.getElementById('velocidad-viento').textContent = cw.windspeed;
-        document.getElementById('temp-max-dia').textContent = `${data.daily.temperature_2m_max[0]}°C`;
+      const ahora = Date.now();
+      if (ahora - ultimaActualizacion < 10 * 60 * 1000) return;
+      ultimaActualizacion = ahora;
+      fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&hourly=temperature_2m,weathercode&daily=temperature_2m_max,temperature_2m_min,weathercode&timezone=auto`)
+        .then(r => r.json())
+        .then(data => {
+          const cw = data.current_weather;
+          document.getElementById('clima-icono').textContent = getWeatherIcon(cw.weathercode);
+          document.getElementById('clima-detalles').innerHTML = `${cw.temperature}°C`;
+          document.getElementById('velocidad-viento').textContent = cw.windspeed;
 
-        const forecastHTML = data.daily.time.map((dia, i) => {
-          if (i === 0) return '';
-          const fecha = new Date(dia);
-          return `<div class="forecast-day">${diasSemana[fecha.getDay()]} ${fecha.getDate()}: ${data.daily.temperature_2m_max[i]}°C ${getWeatherIcon(data.daily.weathercode[i])}</div>`;
-        }).join('');
-        document.getElementById('pronostico').innerHTML = forecastHTML;
-      });
+          const labels = data.hourly.time.slice(0, 24).map(h => h.split('T')[1]);
+          const temps = data.hourly.temperature_2m.slice(0, 24);
+          if (tempChart) tempChart.destroy();
+          tempChart = new Chart(chartCtx, {
+            type: 'line',
+            data: {
+              labels,
+              datasets: [{
+                label: 'Temperatura (°C)',
+                data: temps,
+                borderColor: 'red',
+                fill: false,
+                tension: 0.3
+              }]
+            },
+            options: { responsive: true, scales: { y: { beginAtZero: false } } }
+          });
+
+          const days = data.daily;
+          const forecast = document.getElementById('forecast');
+          forecast.innerHTML = '';
+          const weekdays = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+          for (let i = 0; i < days.time.length; i++) {
+            const el = document.createElement('div');
+            el.className = 'forecast-day';
+            const fecha = new Date(days.time[i]);
+            const dia = weekdays[fecha.getDay()];
+            const icon = getWeatherIcon(days.weathercode[i]);
+            el.innerHTML = `<span>${icon}</span><strong>${dia}</strong><br>${days.temperature_2m_max[i]}° / ${days.temperature_2m_min[i]}°`;
+            forecast.appendChild(el);
+          }
+        }).catch(() => alert("No se pudo obtener el clima."));
     }
 
     function mostrarPOIs(lat, lon) {
-      const categoria = localStorage.getItem('categoria-poi') || 'gasolineras';
-      document.getElementById('categoria-poi').value = categoria;
-      document.getElementById('lista-poi').innerHTML = '';
       poiMarkers.forEach(m => map.removeLayer(m));
       poiMarkers = [];
-
-      const filtros = {
-        gasolineras: ['amenity=fuel'],
-        areas: ['tourism=camp_site', 'tourism=caravan_site', 'amenity=sanitary_dump_station']
-      };
-
-      const keys = filtros[categoria];
-      const queryParts = keys.map(kv => {
-        const [k, v] = kv.split('=');
-        return `node(around:5000,${lat},${lon})["${k}"="${v}"]`;
-      });
-
-      const query = `[out:json];(${queryParts.join(';')});out body;`;
-
-      fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`).then(r => r.json()).then(data => {
-        const lista = document.getElementById('lista-poi');
-        const ordenados = data.elements.map(e => {
-          const distancia = getDistanceFromLatLonInKm(lat, lon, e.lat, e.lon);
-          return { ...e, distancia };
-        }).sort((a, b) => a.distancia - b.distancia).slice(0, 5);
-
-        ordenados.forEach((e, i) => {
-          const nombre = e.tags.name || 'Sin nombre';
-          const distancia = Math.round(e.distancia * 10) / 10;
-          const item = document.createElement('div');
-          item.className = 'poi-item';
-          item.innerHTML = `${i + 1}. ${nombre} - ${distancia} km`;
-          item.addEventListener('click', () => map.setView([e.lat, e.lon], 15));
-          lista.appendChild(item);
-
-          const color = categoria === 'gasolineras' ? 'blue' : 'orange';
-          const icon = L.divIcon({ html: `<b style="color:${color};font-size:1.2rem;">${i + 1}</b>`, className: '' });
-          const marker = L.marker([e.lat, e.lon], { icon }).addTo(map).bindPopup(nombre);
-          poiMarkers.push(marker);
-        });
-      });
+      const categorias = [
+        { tag: 'restaurant', nombre: 'restaurantes', icono: '🍽️' },
+        { tag: 'fuel', nombre: 'gasolineras', icono: '⛽' },
+        { tag: 'parking', nombre: 'areas', icono: '🏕️' },
+        { tag: 'hospital', nombre: 'hospitales', icono: '🏥' }
+      ];
+      const radius = 5000;
+      const consulta = categorias.map(c => `node["amenity"="${c.tag}"](around:${radius},${lat},${lon});`).join('');
+      const url = `https://overpass-api.de/api/interpreter?data=[out:json];(${consulta});out body;`;
+      fetch(url)
+        .then(r => r.json())
+        .then(data => {
+          const resultados = {};
+          categorias.forEach(c => resultados[c.nombre] = []);
+          data.elements.forEach(e => {
+            const dist = (getDistance(lat, lon, e.lat, e.lon) / 1000).toFixed(1);
+            const nombre = e.tags.name || 'Sin nombre';
+            categorias.forEach(c => {
+              if (e.tags.amenity === c.tag) {
+                resultados[c.nombre].push({ nombre, distancia: dist, lat: e.lat, lon: e.lon });
+              }
+            });
+          });
+          categorias.forEach(c => {
+            resultados[c.nombre].sort((a, b) => a.distancia - b.distancia);
+            const cont = document.getElementById(c.nombre);
+            cont.innerHTML = `<strong>${c.icono} ${c.nombre.charAt(0).toUpperCase() + c.nombre.slice(1)}</strong><br>` +
+              resultados[c.nombre].slice(0, 3).map((r, i) => {
+                const m = L.marker([r.lat, r.lon], { title: `${i + 1}` }).bindPopup(`${i + 1}. ${r.nombre}`).addTo(map);
+                poiMarkers.push(m);
+                return `<div class="poi-item">${i + 1}. ${r.nombre} (${r.distancia} km)</div>`;
+              }).join('');
+          });
+        }).catch(() => alert("No se pudieron obtener los puntos de interés."));
     }
 
-    function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
-      const R = 6371;
-      const dLat = (lat2 - lat1) * Math.PI / 180;
-      const dLon = (lon2 - lon1) * Math.PI / 180;
-      const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                Math.sin(dLon / 2) * Math.sin(dLon / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    function getDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371e3;
+      const φ1 = lat1 * Math.PI / 180;
+      const φ2 = lat2 * Math.PI / 180;
+      const Δφ = (lat2 - lat1) * Math.PI / 180;
+      const Δλ = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
       return R * c;
     }
 
-    document.getElementById('categoria-poi').addEventListener('change', (e) => {
-      localStorage.setItem('categoria-poi', e.target.value);
-      mostrarPOIs(lastCenter[0], lastCenter[1]);
-    });
-
-    window.onload = () => {
-      actualizarUbicacion();
-      setInterval(actualizarUbicacion, 60000);
-    };
-
-    function actualizarUbicacion() {
-      navigator.geolocation.getCurrentPosition(pos => {
+    if (navigator.geolocation) {
+      navigator.geolocation.watchPosition(pos => {
         const { latitude: lat, longitude: lon, speed } = pos.coords;
         marker.setLatLng([lat, lon]);
-        if (lastCenter[0] === 0 && lastCenter[1] === 0) {
-          map.setView([lat, lon], 12);
-        }
-        lastCenter = [lat, lon];
+        map.setView([lat, lon], 12);
         document.getElementById('velocidad-vehiculo').textContent = ((speed || 0) * 3.6).toFixed(1);
-        mostrarFechaActual();
         mostrarClima(lat, lon);
         mostrarPOIs(lat, lon);
-      }, err => console.warn("Error GPS:", err.message), { enableHighAccuracy: true });
+      }, err => alert("Error GPS: " + err.message), { enableHighAccuracy: true });
+    } else {
+      alert("Geolocalización no soportada");
     }
   </script>
 </body>

@@ -4,147 +4,107 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Clima en ruta</title>
   <link rel="manifest" href="manifest.json">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <style>
-    body { font-family: sans-serif; margin: 0; height: 100vh; display: flex; flex-direction: column; }
-    #map { flex: 1; }
-    .bottom { display: flex; height: 45%; }
-    .left, .right { flex: 1; padding: 1rem; overflow-y: auto; box-sizing: border-box; }
-    .current-weather { background:#f0f0f0; padding:1rem; border-radius:8px; }
-    .poi-item { cursor:pointer; margin-bottom:0.4rem; }
-    select { width:100%; padding:0.5rem; font-size:1rem; margin-bottom:0.5rem; }
+    body { font-family: sans-serif; margin: 0; padding: 0; height: 100vh; display: flex; flex-direction: column; }
+    #map { height: 50vh; }
+    .content { flex: 1; display: flex; }
+    .left, .right { flex: 1; padding: 1rem; overflow-y: auto; }
+    .poi-item { margin-bottom: 0.5rem; cursor: pointer; }
   </style>
 </head>
 <body><div id="map"></div>
-<div class="bottom">
+<div class="content">
   <div class="left">
-    <div class="current-weather">
-      <div id="fecha-hoy"></div>
-      <div><span id="clima-icono"></span> <span id="clima-detalles"></span></div>
-      <div>Máx hoy: <span id="temp-max-dia"></span></div>
-      <div>🌬️ <span id="velocidad-viento"></span> km/h</div>
-      <div>🚗 <span id="velocidad-vehiculo"></span> km/h</div>
-      <div id="pronostico"></div>
-    </div>
+    <div id="clima">Cargando clima…</div>
   </div>
   <div class="right">
     <select id="categoria-poi">
-      <option value="gasolineras">⛽ Gasolineras</option>
-      <option value="areas">🏕️ Áreas autocaravanas</option>
+      <option value="fuel">⛽ Gasolineras</option>
+      <option value="camp">🏕️ Áreas autocaravanas</option>
     </select>
     <div id="poi-list"></div>
-    <div id="estado-poi" style="font-size:0.9rem;color:#666"></div>
   </div>
 </div><script src="https://unpkg.com/leaflet/dist/leaflet.js"></script><script>
-let map = L.map('map').setView([0,0], 12);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{ attribution:'© OpenStreetMap'}).addTo(map);
+let map = L.map('map').setView([40.4168, -3.7038], 12);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-const iconRojo = L.icon({ iconUrl:'https://maps.gstatic.com/mapfiles/ms2/micons/red-dot.png', iconSize:[32,32] });
-let markerPos = L.marker([0,0],{icon:iconRojo}).addTo(map);
+let userMarker = L.marker([0,0], {icon: L.icon({iconUrl:'https://maps.gstatic.com/mapfiles/ms2/micons/red-dot.png',iconSize:[32,32]})}).addTo(map);
 let poiMarkers = [];
 let lastPos = null;
-let firstLoad = true;
-let refreshTimer = null;
 
-const dias = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
-const meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-
-function fechaActual(){
-  const d=new Date();
-  document.getElementById('fecha-hoy').textContent = `${dias[d.getDay()]}, ${d.getDate()} de ${meses[d.getMonth()]}`;
-}
-
-function iconoClima(c){
-  const m={0:'☀️',1:'🌤️',2:'⛅',3:'☁️',61:'🌧️',63:'🌧️',80:'🌧️',95:'⛈️'};
-  return m[c]||'❓';
-}
-
-function cargarClima(lat,lon){
-  fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=temperature_2m_max,weathercode&timezone=auto`)
-  .then(r=>r.json()).then(d=>{
-    document.getElementById('clima-icono').textContent=iconoClima(d.current_weather.weathercode);
-    document.getElementById('clima-detalles').textContent=`${d.current_weather.temperature}°C`;
-    document.getElementById('velocidad-viento').textContent=d.current_weather.windspeed;
-    document.getElementById('temp-max-dia').textContent=d.daily.temperature_2m_max[0]+"°C";
-  });
-}
-
-function distanciaKm(a,b,c,d){
-  const R=6371;
-  const dLat=(c-a)*Math.PI/180;
-  const dLon=(d-b)*Math.PI/180;
-  const x=Math.sin(dLat/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dLon/2)**2;
-  return R*(2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x)));
-}
-
-function cargarPOI(lat,lon){
-  document.getElementById('estado-poi').textContent='Actualizando puntos de interés…';
-  poiMarkers.forEach(m=>map.removeLayer(m)); poiMarkers=[];
-  const cat=document.getElementById('categoria-poi').value;
-  const filtros={
-    gasolineras:['amenity=fuel'],
-    areas:['tourism=camp_site','tourism=caravan_site','amenity=sanitary_dump_station']
-  };
-  const q=filtros[cat].map(f=>{
-    const [k,v]=f.split('=');
-    return `node(around:5000,${lat},${lon})["${k}"="${v}"]`;
-  }).join(';');
-  const query=`[out:json];(${q});out;`;
-
-  fetch('https://overpass-api.de/api/interpreter',{method:'POST',body:query})
-  .then(r=>r.json()).then(d=>{
-    const lista=document.getElementById('poi-list');
-    lista.innerHTML='';
-    const res=d.elements.map(e=>({
-      ...e,
-      dist:distanciaKm(lat,lon,e.lat,e.lon)
-    })).sort((a,b)=>a.dist-b.dist).slice(0,5);
-
-    res.forEach((e,i)=>{
-      const nombre=e.tags.name||'Sin nombre';
-      const div=document.createElement('div');
-      div.className='poi-item';
-      div.textContent=`${i+1}. ${nombre} (${e.dist.toFixed(1)} km)`;
-      div.onclick=()=>map.setView([e.lat,e.lon],15);
-      lista.appendChild(div);
-
-      const color=cat==='gasolineras'?'blue':'orange';
-      const icon=L.divIcon({html:`<b style="color:${color}">${i+1}</b>`,className:''});
-      poiMarkers.push(L.marker([e.lat,e.lon],{icon}).addTo(map).bindPopup(nombre));
+function actualizarClima(lat, lon) {
+  fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`)
+    .then(r=>r.json())
+    .then(d=>{
+      document.getElementById('clima').textContent = `🌡️ ${d.current_weather.temperature} °C · 🌬️ ${d.current_weather.windspeed} km/h`;
     });
-    document.getElementById('estado-poi').textContent='POI actualizados';
-  });
 }
 
-function programarRefresco(vel){
-  if(refreshTimer) clearInterval(refreshTimer);
-  let t=900000;
-  if(vel>50) t=180000; else if(vel>=10) t=360000;
-  refreshTimer=setInterval(()=>cargarPOI(lastPos.lat,lastPos.lon),t);
+function buscarPOI(lat, lon) {
+  const cat = document.getElementById('categoria-poi').value;
+  localStorage.setItem('categoria-poi', cat);
+
+  poiMarkers.forEach(m => map.removeLayer(m));
+  poiMarkers = [];
+  document.getElementById('poi-list').innerHTML = 'Buscando…';
+
+  let query = '';
+  if (cat === 'fuel') query = 'gasolinera';
+  if (cat === 'camp') query = 'camping OR autocaravana';
+
+  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=10&lat=${lat}&lon=${lon}`;
+
+  fetch(url, {headers:{'Accept-Language':'es'}})
+    .then(r=>r.json())
+    .then(data => {
+      const list = document.getElementById('poi-list');
+      list.innerHTML = '';
+
+      data.slice(0,5).forEach((p,i) => {
+        const d = distancia(lat, lon, p.lat, p.lon).toFixed(2);
+        const div = document.createElement('div');
+        div.className = 'poi-item';
+        div.textContent = `${i+1}. ${p.display_name.split(',')[0]} (${d} km)`;
+        div.onclick = ()=>map.setView([p.lat,p.lon],15);
+        list.appendChild(div);
+
+        const color = cat === 'fuel' ? 'blue' : 'orange';
+        const icon = L.divIcon({html:`<b style="color:${color}">${i+1}</b>`,className:''});
+        const m = L.marker([p.lat,p.lon],{icon}).addTo(map).bindPopup(p.display_name);
+        poiMarkers.push(m);
+      });
+    });
+}
+
+function distancia(lat1,lon1,lat2,lon2){
+  const R=6371;
+  const dLat=(lat2-lat1)*Math.PI/180;
+  const dLon=(lon2-lon1)*Math.PI/180;
+  const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R*(2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)));
 }
 
 function actualizar(){
-  navigator.geolocation.getCurrentPosition(p=>{
-    const {latitude,longitude,speed}=p.coords;
-    markerPos.setLatLng([latitude,longitude]);
+  navigator.geolocation.getCurrentPosition(pos=>{
+    const {latitude, longitude, speed} = pos.coords;
+    userMarker.setLatLng([latitude,longitude]);
     map.setView([latitude,longitude],12);
-    document.getElementById('velocidad-vehiculo').textContent=((speed||0)*3.6).toFixed(1);
-    fechaActual();
-    cargarClima(latitude,longitude);
+    actualizarClima(latitude,longitude);
 
-    if(firstLoad){ cargarPOI(latitude,longitude); firstLoad=false; }
-    programarRefresco((speed||0)*3.6);
-    lastPos={lat:latitude,lon:longitude};
+    if (!lastPos || distancia(lastPos.lat,lastPos.lon,latitude,longitude) > 0.5) {
+      buscarPOI(latitude,longitude);
+      lastPos = {lat:latitude, lon:longitude};
+    }
   });
 }
 
-categoriaPoi=document.getElementById('categoria-poi');
-categoriaPoi.value=localStorage.getItem('categoria')||'gasolineras';
-categoriaPoi.onchange=()=>{
-  localStorage.setItem('categoria',categoriaPoi.value);
-  if(lastPos) cargarPOI(lastPos.lat,lastPos.lon);
-};
+document.getElementById('categoria-poi').addEventListener('change', ()=>{
+  if (lastPos) buscarPOI(lastPos.lat,lastPos.lon);
+});
+
+const saved = localStorage.getItem('categoria-poi');
+if (saved) document.getElementById('categoria-poi').value = saved;
 
 actualizar();
 setInterval(actualizar,60000);

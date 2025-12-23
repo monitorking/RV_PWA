@@ -11,15 +11,18 @@
     .content { flex: 1; display: flex; }
     .left, .right { flex: 1; padding: 1rem; overflow-y: auto; }
     .poi-item { margin-bottom: 0.5rem; cursor: pointer; }
+    .forecast-day { font-size: 0.9rem; }
   </style>
 </head>
 <body><div id="map"></div>
 <div class="content">
   <div class="left">
-    <div id="clima">Cargando clima…</div>
+    <div id="clima-actual">Cargando clima…</div>
+    <div id="pronostico"></div>
   </div>
   <div class="right">
     <select id="categoria-poi">
+      <option value="restaurant">🍽️ Restaurantes</option>
       <option value="fuel">⛽ Gasolineras</option>
       <option value="camp">🏕️ Áreas autocaravanas</option>
     </select>
@@ -32,12 +35,22 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 let userMarker = L.marker([0,0], {icon: L.icon({iconUrl:'https://maps.gstatic.com/mapfiles/ms2/micons/red-dot.png',iconSize:[32,32]})}).addTo(map);
 let poiMarkers = [];
 let lastPos = null;
+let firstLoad = true;
+
+const dias = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
 
 function actualizarClima(lat, lon) {
-  fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`)
+  fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=temperature_2m_max,weathercode&timezone=auto`)
     .then(r=>r.json())
     .then(d=>{
-      document.getElementById('clima').textContent = `🌡️ ${d.current_weather.temperature} °C · 🌬️ ${d.current_weather.windspeed} km/h`;
+      const cw = d.current_weather;
+      document.getElementById('clima-actual').textContent = `🌡️ ${cw.temperature} °C · 🌬️ ${cw.windspeed} km/h`;
+
+      document.getElementById('pronostico').innerHTML = d.daily.time.map((t,i)=>{
+        if(i===0) return '';
+        const f = new Date(t);
+        return `<div class="forecast-day">${dias[f.getDay()]} ${f.getDate()} · ${d.daily.temperature_2m_max[i]} °C</div>`;
+      }).join('');
     });
 }
 
@@ -50,8 +63,11 @@ function buscarPOI(lat, lon) {
   document.getElementById('poi-list').innerHTML = 'Buscando…';
 
   let query = '';
-  if (cat === 'fuel') query = 'gasolinera';
-  if (cat === 'camp') query = 'camping OR autocaravana';
+  let color = 'blue';
+
+  if (cat === 'fuel') { query = 'gasolinera'; color = 'blue'; }
+  if (cat === 'restaurant') { query = 'restaurante'; color = 'green'; }
+  if (cat === 'camp') { query = 'camping OR autocaravana'; color = 'orange'; }
 
   const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=10&lat=${lat}&lon=${lon}`;
 
@@ -69,7 +85,6 @@ function buscarPOI(lat, lon) {
         div.onclick = ()=>map.setView([p.lat,p.lon],15);
         list.appendChild(div);
 
-        const color = cat === 'fuel' ? 'blue' : 'orange';
         const icon = L.divIcon({html:`<b style="color:${color}">${i+1}</b>`,className:''});
         const m = L.marker([p.lat,p.lon],{icon}).addTo(map).bindPopup(p.display_name);
         poiMarkers.push(m);
@@ -87,15 +102,17 @@ function distancia(lat1,lon1,lat2,lon2){
 
 function actualizar(){
   navigator.geolocation.getCurrentPosition(pos=>{
-    const {latitude, longitude, speed} = pos.coords;
+    const {latitude, longitude} = pos.coords;
     userMarker.setLatLng([latitude,longitude]);
-    map.setView([latitude,longitude],12);
-    actualizarClima(latitude,longitude);
 
-    if (!lastPos || distancia(lastPos.lat,lastPos.lon,latitude,longitude) > 0.5) {
+    if(firstLoad){
+      map.setView([latitude,longitude],12);
       buscarPOI(latitude,longitude);
-      lastPos = {lat:latitude, lon:longitude};
+      firstLoad = false;
     }
+
+    actualizarClima(latitude,longitude);
+    lastPos = {lat:latitude, lon:longitude};
   });
 }
 

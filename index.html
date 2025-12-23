@@ -75,10 +75,34 @@ function buscarPOI(lat, lon) {
   if(cat==='restaurant'){queries=['restaurante'];color='green';}
   if(cat==='camp'){queries=['camping','area autocaravanas','caravan'];color='orange';}
 
-  Promise.all(queries.map(q=>fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=10&lat=${lat}&lon=${lon}`)))
-    .then(rs=>Promise.all(rs.map(r=>r.json())))
-    .then(results=>{
-      const merged=results.flat();
+    Promise.all(
+    queries.map(q => {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=50&viewbox=${lon-0.3},${lat+0.3},${lon+0.3},${lat-0.3}&bounded=1`;
+      return fetch(url, { headers: { 'Accept-Language': 'es' } }).then(r => r.json());
+    })
+  )
+    .then(results => {
+      const merged = results.flat();
+      const list = document.getElementById('poi-list');
+      list.innerHTML = '';
+
+      merged
+        .map(p => ({ p, dist: distancia(lat, lon, p.lat, p.lon) }))
+        .sort((a, b) => a.dist - b.dist)
+        .slice(0, 5)
+        .forEach((o, i) => {
+          const p = o.p;
+          const div = document.createElement('div');
+          div.className = 'poi-item';
+          div.textContent = `${i + 1}. ${p.display_name.split(',')[0]} (${o.dist.toFixed(1)} km)`;
+          div.onclick = () => map.setView([p.lat, p.lon], 15);
+          list.appendChild(div);
+
+          const icon = L.divIcon({ html: `<b style='color:${color}'>${i + 1}</b>`, className: '' });
+          const m = L.marker([p.lat, p.lon], { icon }).addTo(map).bindPopup(p.display_name);
+          poiMarkers.push(m);
+        });
+    });
       const list=document.getElementById('poi-list');
       list.innerHTML='';
 

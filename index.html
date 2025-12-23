@@ -76,7 +76,9 @@ ordenados.forEach((e,i)=>{
 
 function dist(lat1,lon1,lat2,lon2){ const R=6371; const dLat=(lat2-lat1)Math.PI/180; const dLon=(lon2-lon1)Math.PI/180; const a=Math.sin(dLat/2)**2+Math.cos(lat1Math.PI/180)Math.cos(lat2Math.PI/180)Math.sin(dLon/2)**2; return R2Math.atan2(Math.sqrt(a),Math.sqrt(1-a)); }
 
-function actualizarUbicacion(){ navigator.geolocation.getCurrentPosition(pos=>{ const {latitude:lat,longitude:lon,speed}=pos.coords; const kmh=((speed||0)*3.6); userMarker.setLatLng([lat,lon]); map.setView([lat,lon], map.getZoom()||12); document.getElementById('velocidad-vehiculo').textContent=kmh.toFixed(1); mostrarFecha(); mostrarPOIs(lat,lon); actualizarTemporizador(kmh); }); }
+let primeraCarga = true;
+
+function actualizarUbicacion(){ navigator.geolocation.getCurrentPosition(pos=>{ const {latitude:lat,longitude:lon,speed}=pos.coords; const kmh=((speed||0)*3.6); userMarker.setLatLng([lat,lon]); map.setView([lat,lon], map.getZoom()||12); document.getElementById('velocidad-vehiculo').textContent=kmh.toFixed(1); mostrarFecha(); mostrarPOIs(lat,lon); if (primeraCarga) { // Forzar refresco inmediato de POI en la primera carga if (refreshTimer) clearInterval(refreshTimer); refreshTimer = setInterval(actualizarUbicacion, refrescoPorVelocidad(kmh)); primeraCarga = false; } else { actualizarTemporizador(kmh); } }); }
 
 categoria-poi.onchange=e=>{ localStorage.setItem('categoria-poi',e.target.value); actualizarUbicacion(); };
 

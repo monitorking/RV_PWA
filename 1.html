@@ -3,8 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Camper Dash v3 - Clima & Mapa</title>
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>CamperDash</title>
     
+    <link rel="manifest" href='data:application/manifest+json,{"name":"CamperDash","short_name":"CamperDash","start_url":".","display":"standalone","background_color":"#121212","theme_color":"#121212"}'>
+
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
@@ -28,22 +32,22 @@
 
         .container {
             display: grid;
-            grid-template-columns: 350px 1fr;
-            grid-template-rows: 140px 1fr 180px;
+            grid-template-columns: 320px 1fr;
+            grid-template-rows: 120px 1fr 160px; /* Ajustado para que no se corte */
             height: 100vh;
         }
 
-        /* --- Sidebar --- */
+        /* --- Clima Actual --- */
         #weather-now { 
             grid-column: 1; grid-row: 1; 
-            padding: 15px; background: var(--card-bg);
+            padding: 10px; background: var(--card-bg);
             border-bottom: 2px solid #333;
             display: flex; align-items: center; justify-content: space-around;
         }
+        #temp-main { font-size: 2.2em; font-weight: bold; margin: 0; }
+        #weather-desc { text-transform: capitalize; color: var(--accent); font-size: 0.9em; }
 
-        #temp-main { font-size: 2.8em; font-weight: bold; margin: 0; }
-        #weather-desc { text-transform: capitalize; color: var(--accent); font-weight: bold; }
-
+        /* --- Lista POIs --- */
         #poi-sidebar { 
             grid-column: 1; grid-row: 2 / 4; 
             background: var(--card-bg); padding: 15px;
@@ -53,45 +57,35 @@
         /* --- Mapa --- */
         #map { grid-column: 2; grid-row: 1 / 3; z-index: 1; }
 
-        /* --- Panel de Previsión (Sustituye al gráfico) --- */
+        /* --- Previsión 5 días (Sin cortes) --- */
         #forecast-panel { 
             grid-column: 2; grid-row: 3; 
             background: #181818; 
             display: flex;
-            justify-content: space-around;
+            justify-content: space-evenly;
             align-items: center;
-            padding: 10px;
+            padding: 5px 10px;
             border-top: 2px solid #333;
         }
 
         .forecast-card {
             text-align: center;
             background: #252525;
-            padding: 10px;
-            border-radius: 12px;
-            min-width: 100px;
+            padding: 8px;
+            border-radius: 10px;
+            width: 18%; /* Asegura que quepan los 5 sin scroll */
             border: 1px solid #333;
         }
+        .forecast-card .day { font-weight: bold; color: var(--accent); font-size: 0.8em; }
+        .temp-max { color: #ff5252; font-weight: bold; font-size: 0.9em; }
+        .temp-min { color: #52b2ff; font-size: 0.8em; margin-left: 4px; }
 
-        .forecast-card .day { font-weight: bold; color: var(--accent); text-transform: uppercase; font-size: 0.8em; }
-        .forecast-card .temps { font-size: 0.9em; margin-top: 5px; }
-        .temp-max { color: #ff5252; font-weight: bold; }
-        .temp-min { color: #52b2ff; margin-left: 5px; }
-
-        /* --- POI Items --- */
-        .category-header {
-            padding: 6px 10px; margin-top: 15px;
-            border-radius: 4px; font-weight: bold; font-size: 0.85em;
-        }
-        .bg-fuel { background: rgba(255, 152, 0, 0.2); color: var(--fuel); }
-        .bg-rest { background: rgba(233, 30, 99, 0.2); color: var(--rest); }
-        .bg-rv { background: rgba(76, 175, 80, 0.2); color: var(--rv); }
-
-        .poi-item {
-            background: #2a2a2a; margin: 4px 0; padding: 8px;
-            border-radius: 6px; font-size: 0.8em;
-            display: flex; justify-content: space-between;
-        }
+        /* --- Estilos POIs --- */
+        .category-header { padding: 6px; margin-top: 10px; border-radius: 4px; font-weight: bold; font-size: 0.8em; }
+        .bg-fuel { background: rgba(255,152,0,0.2); color: var(--fuel); }
+        .bg-rest { background: rgba(233,30,99,0.2); color: var(--rest); }
+        .bg-rv { background: rgba(76,175,80,0.2); color: var(--rv); }
+        .poi-item { background: #2a2a2a; margin: 4px 0; padding: 8px; border-radius: 6px; font-size: 0.75em; display: flex; justify-content: space-between; }
     </style>
 </head>
 <body>
@@ -100,50 +94,42 @@
     <div id="weather-now">
         <div>
             <h2 id="temp-main">--°C</h2>
-            <div id="weather-desc">Buscando GPS...</div>
+            <div id="weather-desc">GPS...</div>
         </div>
-        <img id="weather-icon-main" src="" width="70">
+        <img id="weather-icon-main" src="" width="60">
     </div>
 
     <div id="poi-sidebar">
-        <h3 style="margin:0 0 10px 0; font-size: 1.1em;">Puntos Cercanos</h3>
-        <div id="pois-container">Cargando datos...</div>
+        <h3 style="margin:0 0 10px 0; font-size: 1em;">Puntos Cercanos</h3>
+        <div id="pois-container">Cargando...</div>
     </div>
 
     <div id="map"></div>
 
-    <div id="forecast-panel">
-        </div>
+    <div id="forecast-panel"></div>
 </div>
 
 <script>
     const API_KEY = 'a536bbf0647c0b2071fef4903ed17c8f';
-    const DISTANCE_THRESHOLD = 500; 
+    const THRESHOLD = 500; 
     let lastCoords = null;
     let map, userMarker, poiLayers = L.layerGroup();
 
     function init() {
         map = L.map('map', { zoomControl: false }).setView([40, -3], 13);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '©OSM'
-        }).addTo(map);
-        
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
         poiLayers.addTo(map);
-        userMarker = L.circleMarker([0, 0], {
-            radius: 9, color: '#fff', fillColor: '#007bff', fillOpacity: 1, weight: 3
-        }).addTo(map);
+        userMarker = L.circleMarker([0, 0], { radius: 8, color: '#fff', fillColor: '#007bff', fillOpacity: 1, weight: 2 }).addTo(map);
 
         if (navigator.geolocation) {
             navigator.geolocation.watchPosition(pos => {
                 const { latitude, longitude } = pos.coords;
-                const current = [latitude, longitude];
-                userMarker.setLatLng(current);
-
-                if (!lastCoords || getDist(lastCoords, current) > DISTANCE_THRESHOLD) {
-                    lastCoords = current;
-                    updateData(latitude, longitude);
+                userMarker.setLatLng([latitude, longitude]);
+                if (!lastCoords || getDist(lastCoords, [latitude, longitude]) > THRESHOLD) {
+                    lastCoords = [latitude, longitude];
+                    update(latitude, longitude);
                 }
-            }, err => console.error(err), { enableHighAccuracy: true });
+            }, null, { enableHighAccuracy: true });
         }
     }
 
@@ -155,95 +141,80 @@
         return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
-    async function updateData(lat, lon) {
+    async function update(lat, lon) {
         map.panTo([lat, lon]);
         
-        // --- CLIMA ---
+        // Clima
         try {
             const res = await fetch(`https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&units=metric&appid=${API_KEY}&lang=es`);
             const data = await res.json();
-            
-            // Actual
             document.getElementById('temp-main').innerText = `${Math.round(data.list[0].main.temp)}°C`;
             document.getElementById('weather-desc').innerText = data.list[0].weather[0].description;
             document.getElementById('weather-icon-main').src = `https://openweathermap.org/img/wn/${data.list[0].weather[0].icon}@2x.png`;
 
-            // Previsión 5 días
-            const forecastDiv = document.getElementById('forecast-panel');
-            forecastDiv.innerHTML = "";
-            
-            // Agrupar por días para sacar min/max
+            const fPanel = document.getElementById('forecast-panel');
+            fPanel.innerHTML = "";
             const daily = {};
-            data.list.forEach(item => {
-                const date = item.dt_txt.split(' ')[0];
-                if (!daily[date]) daily[date] = { min: item.main.temp, max: item.main.temp, icon: item.weather[0].icon, dt: item.dt };
-                if (item.main.temp < daily[date].min) daily[date].min = item.main.temp;
-                if (item.main.temp > daily[date].max) daily[date].max = item.main.temp;
+            data.list.forEach(i => {
+                const d = i.dt_txt.split(' ')[0];
+                if (!daily[d]) daily[d] = { min: i.main.temp, max: i.main.temp, icon: i.weather[0].icon, dt: i.dt };
+                daily[d].min = Math.min(daily[d].min, i.main.temp);
+                daily[d].max = Math.max(daily[d].max, i.main.temp);
             });
 
             Object.keys(daily).slice(1, 6).forEach(date => {
                 const d = daily[date];
                 const dayName = new Date(d.dt * 1000).toLocaleDateString('es-ES', { weekday: 'short' });
-                forecastDiv.innerHTML += `
+                fPanel.innerHTML += `
                     <div class="forecast-card">
                         <div class="day">${dayName}</div>
-                        <img src="https://openweathermap.org/img/wn/${d.icon}.png" width="50">
+                        <img src="https://openweathermap.org/img/wn/${d.icon}.png" width="40">
                         <div class="temps">
                             <span class="temp-max">${Math.round(d.max)}°</span>
                             <span class="temp-min">${Math.round(d.min)}°</span>
                         </div>
                     </div>`;
             });
-        } catch(e) { console.error(e); }
+        } catch(e) {}
 
-        // --- PUNTOS DE INTERÉS ---
+        // POIs
         try {
-            const query = `[out:json];(
-                node["amenity"="fuel"](around:10000,${lat},${lon});
-                node["amenity"="restaurant"](around:5000,${lat},${lon});
-                node["tourism"="caravan_site"](around:20000,${lat},${lon});
-                node["amenity"="caravan_site"](around:20000,${lat},${lon});
-            );out body;`;
-            const res = await fetch("https://overpass-api.de/api/interpreter", { method: "POST", body: query });
+            const q = `[out:json];(node["amenity"="fuel"](around:10000,${lat},${lon});node["amenity"="restaurant"](around:5000,${lat},${lon});node["tourism"="caravan_site"](around:20000,${lat},${lon});node["amenity"="caravan_site"](around:20000,${lat},${lon}););out body;`;
+            const res = await fetch("https://overpass-api.de/api/interpreter", { method: "POST", body: q });
             const osm = await res.json();
-            
             renderPOIs(osm.elements, lat, lon);
-        } catch(e) { console.error(e); }
+        } catch(e) {}
     }
 
     function renderPOIs(elements, lat, lon) {
         const container = document.getElementById('pois-container');
         container.innerHTML = "";
         poiLayers.clearLayers();
-
         const cats = {
-            caravan: { n: "Áreas Autocaravanas", items: [], c: "bg-rv", hex: "#4caf50" },
+            caravan: { n: "Áreas AC", items: [], c: "bg-rv", hex: "#4caf50" },
             fuel: { n: "Gasolineras", items: [], c: "bg-fuel", hex: "#ff9800" },
             restaurant: { n: "Restaurantes", items: [], c: "bg-rest", hex: "#e91e63" }
         };
-
         elements.forEach(el => {
-            let type = "fuel";
-            if (el.tags.amenity === "restaurant") type = "restaurant";
-            if (el.tags.tourism === "caravan_site" || el.tags.amenity === "caravan_site") type = "caravan";
+            let t = "fuel";
+            if (el.tags.amenity === "restaurant") t = "restaurant";
+            if (el.tags.tourism === "caravan_site" || el.tags.amenity === "caravan_site") t = "caravan";
             el.dist = getDist([lat, lon], [el.lat, el.lon]);
-            cats[type].items.push(el);
+            cats[t].items.push(el);
         });
-
         for (let k in cats) {
             const c = cats[k];
             const nearest = c.items.sort((a,b) => a.dist - b.dist).slice(0, 5);
             if (nearest.length > 0) {
                 container.innerHTML += `<div class="category-header ${c.c}">${c.n}</div>`;
-                nearest.forEach(item => {
-                    const dStr = item.dist > 1000 ? (item.dist/1000).toFixed(1)+"km" : Math.round(item.dist)+"m";
-                    container.innerHTML += `<div class="poi-item"><span>${item.tags.name || 'S/N'}</span><span style="color:var(--accent)">${dStr}</span></div>`;
-                    L.circleMarker([item.lat, item.lon], { radius: 6, color: c.hex, fillOpacity: 0.8 }).addTo(poiLayers).bindPopup(item.tags.name || c.n);
+                nearest.forEach(i => {
+                    const d = i.dist > 1000 ? (i.dist/1000).toFixed(1)+"km" : Math.round(i.dist)+"m";
+                    container.innerHTML += `<div class="poi-item"><span>${i.tags.name || 'S/N'}</span><span style="color:var(--accent)">${d}</span></div>`;
+                    L.circleMarker([i.lat, i.lon], { radius: 5, color: c.hex, fillOpacity: 0.8 }).addTo(poiLayers).bindPopup(i.tags.name || c.n);
                 });
             }
         }
     }
-
     window.onload = init;
 </script>
 </body>

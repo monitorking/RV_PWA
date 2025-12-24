@@ -3,11 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Camper Dash Pro</title>
+    <title>Camper Dash v3 - Clima & Mapa</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
     <style>
         :root {
@@ -15,26 +14,26 @@
             --card-bg: #1e1e1e;
             --accent: #00d1ff;
             --text: #e0e0e0;
-            --rv-color: #4caf50;
-            --fuel-color: #ff9800;
-            --rest-color: #e91e63;
+            --fuel: #ff9800;
+            --rest: #e91e63;
+            --rv: #4caf50;
         }
 
         body, html { 
             margin: 0; padding: 0; height: 100%; 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Segoe UI', sans-serif;
             background: var(--dark-bg); color: var(--text);
             overflow: hidden;
         }
 
         .container {
             display: grid;
-            grid-template-columns: 380px 1fr;
-            grid-template-rows: 140px 1fr 220px;
+            grid-template-columns: 350px 1fr;
+            grid-template-rows: 140px 1fr 180px;
             height: 100vh;
         }
 
-        /* --- Sidebar & Weather --- */
+        /* --- Sidebar --- */
         #weather-now { 
             grid-column: 1; grid-row: 1; 
             padding: 15px; background: var(--card-bg);
@@ -42,111 +41,113 @@
             display: flex; align-items: center; justify-content: space-around;
         }
 
-        #temp { font-size: 2.5em; font-weight: bold; margin: 0; }
-        #weather-desc { text-transform: capitalize; color: var(--accent); }
+        #temp-main { font-size: 2.8em; font-weight: bold; margin: 0; }
+        #weather-desc { text-transform: capitalize; color: var(--accent); font-weight: bold; }
 
-        #poi-list { 
+        #poi-sidebar { 
             grid-column: 1; grid-row: 2 / 4; 
             background: var(--card-bg); padding: 15px;
             overflow-y: auto; border-right: 2px solid #333;
         }
 
-        /* --- Map & Forecast --- */
+        /* --- Mapa --- */
         #map { grid-column: 2; grid-row: 1 / 3; z-index: 1; }
 
-        #forecast { 
+        /* --- Panel de Previsión (Sustituye al gráfico) --- */
+        #forecast-panel { 
             grid-column: 2; grid-row: 3; 
-            background: #181818; padding: 15px;
+            background: #181818; 
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            padding: 10px;
             border-top: 2px solid #333;
         }
 
-        /* --- POI Styles --- */
-        .category-header {
-            padding: 8px; margin-top: 15px;
-            border-radius: 4px; font-weight: bold; font-size: 0.9em;
-            text-transform: uppercase; letter-spacing: 1px;
+        .forecast-card {
+            text-align: center;
+            background: #252525;
+            padding: 10px;
+            border-radius: 12px;
+            min-width: 100px;
+            border: 1px solid #333;
         }
-        .bg-fuel { background: rgba(255, 152, 0, 0.2); color: #ff9800; border-left: 4px solid #ff9800; }
-        .bg-rest { background: rgba(233, 30, 99, 0.2); color: #e91e63; border-left: 4px solid #e91e63; }
-        .bg-rv { background: rgba(76, 175, 80, 0.2); color: #4caf50; border-left: 4px solid #4caf50; }
+
+        .forecast-card .day { font-weight: bold; color: var(--accent); text-transform: uppercase; font-size: 0.8em; }
+        .forecast-card .temps { font-size: 0.9em; margin-top: 5px; }
+        .temp-max { color: #ff5252; font-weight: bold; }
+        .temp-min { color: #52b2ff; margin-left: 5px; }
+
+        /* --- POI Items --- */
+        .category-header {
+            padding: 6px 10px; margin-top: 15px;
+            border-radius: 4px; font-weight: bold; font-size: 0.85em;
+        }
+        .bg-fuel { background: rgba(255, 152, 0, 0.2); color: var(--fuel); }
+        .bg-rest { background: rgba(233, 30, 99, 0.2); color: var(--rest); }
+        .bg-rv { background: rgba(76, 175, 80, 0.2); color: var(--rv); }
 
         .poi-item {
-            background: #2a2a2a; margin: 5px 0; padding: 10px;
-            border-radius: 6px; font-size: 0.85em;
+            background: #2a2a2a; margin: 4px 0; padding: 8px;
+            border-radius: 6px; font-size: 0.8em;
             display: flex; justify-content: space-between;
         }
-        .dist { color: var(--accent); font-weight: bold; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <div id="weather-now">
-        <div id="weather-info">
-            <h2 id="temp">--°C</h2>
-            <div id="weather-desc">Buscando señal GPS...</div>
+        <div>
+            <h2 id="temp-main">--°C</h2>
+            <div id="weather-desc">Buscando GPS...</div>
         </div>
-        <img id="weather-icon" src="" width="80">
+        <img id="weather-icon-main" src="" width="70">
     </div>
 
-    <div id="poi-list">
-        <h3 style="margin-top:0">Cerca de ti</h3>
-        <div id="pois-container">Cargando puntos de interés...</div>
+    <div id="poi-sidebar">
+        <h3 style="margin:0 0 10px 0; font-size: 1.1em;">Puntos Cercanos</h3>
+        <div id="pois-container">Cargando datos...</div>
     </div>
 
     <div id="map"></div>
 
-    <div id="forecast">
-        <canvas id="forecastChart"></canvas>
-    </div>
+    <div id="forecast-panel">
+        </div>
 </div>
 
 <script>
-    // Configuración
-    const API_KEY_WEATHER = 'a536bbf0647c0b2071fef4903ed17c8f';
-    const UPDATE_THRESHOLD = 500; // metros
+    const API_KEY = 'a536bbf0647c0b2071fef4903ed17c8f';
+    const DISTANCE_THRESHOLD = 500; 
     let lastCoords = null;
-    let map, userMarker, forecastChart;
-    let poiLayers = L.layerGroup();
+    let map, userMarker, poiLayers = L.layerGroup();
 
-    function initApp() {
-        // Inicializar mapa (vista satelital híbrida opcional, aquí estándar clara)
+    function init() {
         map = L.map('map', { zoomControl: false }).setView([40, -3], 13);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '©OpenStreetMap'
+            attribution: '©OSM'
         }).addTo(map);
         
         poiLayers.addTo(map);
-
-        // Icono de usuario (Círculo azul)
         userMarker = L.circleMarker([0, 0], {
-            radius: 10, color: '#fff', fillColor: '#007bff', fillOpacity: 1, weight: 3
+            radius: 9, color: '#fff', fillColor: '#007bff', fillOpacity: 1, weight: 3
         }).addTo(map);
 
         if (navigator.geolocation) {
-            navigator.geolocation.watchPosition(handleLocation, showError, {
-                enableHighAccuracy: true
-            });
-        } else {
-            alert("El GPS no está disponible en este dispositivo.");
+            navigator.geolocation.watchPosition(pos => {
+                const { latitude, longitude } = pos.coords;
+                const current = [latitude, longitude];
+                userMarker.setLatLng(current);
+
+                if (!lastCoords || getDist(lastCoords, current) > DISTANCE_THRESHOLD) {
+                    lastCoords = current;
+                    updateData(latitude, longitude);
+                }
+            }, err => console.error(err), { enableHighAccuracy: true });
         }
     }
 
-    function handleLocation(position) {
-        const { latitude, longitude } = position.coords;
-        const currentCoords = [latitude, longitude];
-
-        // Mover marcador de usuario siempre
-        userMarker.setLatLng(currentCoords);
-
-        // Si es la primera vez o nos hemos movido > 500m
-        if (!lastCoords || getDistance(lastCoords, currentCoords) > UPDATE_THRESHOLD) {
-            lastCoords = currentCoords;
-            updateDashboard(latitude, longitude);
-        }
-    }
-
-    function getDistance(c1, c2) {
+    function getDist(c1, c2) {
         const R = 6371e3;
         const dLat = (c2[0]-c1[0]) * Math.PI/180;
         const dLon = (c2[1]-c1[1]) * Math.PI/180;
@@ -154,138 +155,96 @@
         return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
-    async function updateDashboard(lat, lon) {
+    async function updateData(lat, lon) {
         map.panTo([lat, lon]);
-        getWeather(lat, lon);
-        getPOIs(lat, lon);
-    }
-
-    async function getWeather(lat, lon) {
+        
+        // --- CLIMA ---
         try {
-            const url = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&units=metric&appid=${API_KEY_WEATHER}&lang=es`;
-            const resp = await fetch(url);
-            const data = await resp.json();
+            const res = await fetch(`https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&units=metric&appid=${API_KEY}&lang=es`);
+            const data = await res.json();
             
-            document.getElementById('temp').innerText = `${Math.round(data.list[0].main.temp)}°C`;
+            // Actual
+            document.getElementById('temp-main').innerText = `${Math.round(data.list[0].main.temp)}°C`;
             document.getElementById('weather-desc').innerText = data.list[0].weather[0].description;
-            document.getElementById('weather-icon').src = `https://openweathermap.org/img/wn/${data.list[0].weather[0].icon}@2x.png`;
+            document.getElementById('weather-icon-main').src = `https://openweathermap.org/img/wn/${data.list[0].weather[0].icon}@2x.png`;
 
-            renderForecast(data.list);
-        } catch (e) { console.error("Error Clima:", e); }
+            // Previsión 5 días
+            const forecastDiv = document.getElementById('forecast-panel');
+            forecastDiv.innerHTML = "";
+            
+            // Agrupar por días para sacar min/max
+            const daily = {};
+            data.list.forEach(item => {
+                const date = item.dt_txt.split(' ')[0];
+                if (!daily[date]) daily[date] = { min: item.main.temp, max: item.main.temp, icon: item.weather[0].icon, dt: item.dt };
+                if (item.main.temp < daily[date].min) daily[date].min = item.main.temp;
+                if (item.main.temp > daily[date].max) daily[date].max = item.main.temp;
+            });
+
+            Object.keys(daily).slice(1, 6).forEach(date => {
+                const d = daily[date];
+                const dayName = new Date(d.dt * 1000).toLocaleDateString('es-ES', { weekday: 'short' });
+                forecastDiv.innerHTML += `
+                    <div class="forecast-card">
+                        <div class="day">${dayName}</div>
+                        <img src="https://openweathermap.org/img/wn/${d.icon}.png" width="50">
+                        <div class="temps">
+                            <span class="temp-max">${Math.round(d.max)}°</span>
+                            <span class="temp-min">${Math.round(d.min)}°</span>
+                        </div>
+                    </div>`;
+            });
+        } catch(e) { console.error(e); }
+
+        // --- PUNTOS DE INTERÉS ---
+        try {
+            const query = `[out:json];(
+                node["amenity"="fuel"](around:10000,${lat},${lon});
+                node["amenity"="restaurant"](around:5000,${lat},${lon});
+                node["tourism"="caravan_site"](around:20000,${lat},${lon});
+                node["amenity"="caravan_site"](around:20000,${lat},${lon});
+            );out body;`;
+            const res = await fetch("https://overpass-api.de/api/interpreter", { method: "POST", body: query });
+            const osm = await res.json();
+            
+            renderPOIs(osm.elements, lat, lon);
+        } catch(e) { console.error(e); }
     }
 
-    async function getPOIs(lat, lon) {
+    function renderPOIs(elements, lat, lon) {
         const container = document.getElementById('pois-container');
+        container.innerHTML = "";
         poiLayers.clearLayers();
 
-        // Consulta Overpass: Gasolineras, Restaurantes y Áreas de AC (caravan_site)
-        const query = `
-            [out:json][timeout:25];
-            (
-              node["amenity"="fuel"](around:10000, ${lat}, ${lon});
-              node["amenity"="restaurant"](around:10000, ${lat}, ${lon});
-              node["tourism"="caravan_site"](around:20000, ${lat}, ${lon});
-              node["amenity"="caravan_site"](around:20000, ${lat}, ${lon});
-            );
-            out body;
-        `;
-        
-        try {
-            const resp = await fetch("https://overpass-api.de/api/interpreter", {
-                method: "POST",
-                body: query
-            });
-            const data = await resp.json();
-            
-            const categories = {
-                fuel: { name: "Gasolineras", items: [], color: "#ff9800", class: "bg-fuel" },
-                restaurant: { name: "Restaurantes", items: [], color: "#e91e63", class: "bg-rest" },
-                caravan: { name: "Áreas Autocaravanas", items: [], color: "#4caf50", class: "bg-rv" }
-            };
+        const cats = {
+            caravan: { n: "Áreas Autocaravanas", items: [], c: "bg-rv", hex: "#4caf50" },
+            fuel: { n: "Gasolineras", items: [], c: "bg-fuel", hex: "#ff9800" },
+            restaurant: { n: "Restaurantes", items: [], c: "bg-rest", hex: "#e91e63" }
+        };
 
-            data.elements.forEach(el => {
-                let cat = "fuel";
-                if (el.tags.amenity === "restaurant") cat = "restaurant";
-                if (el.tags.tourism === "caravan_site" || el.tags.amenity === "caravan_site") cat = "caravan";
-                
-                el.dist = getDistance([lat, lon], [el.lat, el.lon]);
-                categories[cat].items.push(el);
-            });
+        elements.forEach(el => {
+            let type = "fuel";
+            if (el.tags.amenity === "restaurant") type = "restaurant";
+            if (el.tags.tourism === "caravan_site" || el.tags.amenity === "caravan_site") type = "caravan";
+            el.dist = getDist([lat, lon], [el.lat, el.lon]);
+            cats[type].items.push(el);
+        });
 
-            container.innerHTML = "";
-            
-            for (let key in categories) {
-                const cat = categories[key];
-                // Ordenar por distancia y tomar los 5 primeros
-                const nearest = cat.items.sort((a, b) => a.dist - b.dist).slice(0, 5);
-                
-                if (nearest.length > 0) {
-                    container.innerHTML += `<div class="category-header ${cat.class}">${cat.name}</div>`;
-                    nearest.forEach(item => {
-                        const d = item.dist > 1000 ? (item.dist/1000).toFixed(1) + " km" : Math.round(item.dist) + " m";
-                        container.innerHTML += `
-                            <div class="poi-item">
-                                <span>${item.tags.name || 'S/N'}</span>
-                                <span class="dist">${d}</span>
-                            </div>`;
-                        
-                        L.circleMarker([item.lat, item.lon], {
-                            radius: 6, color: cat.color, fillOpacity: 0.8
-                        }).addTo(poiLayers).bindPopup(`<b>${cat.name}</b><br>${item.tags.name || ''}`);
-                    });
-                }
+        for (let k in cats) {
+            const c = cats[k];
+            const nearest = c.items.sort((a,b) => a.dist - b.dist).slice(0, 5);
+            if (nearest.length > 0) {
+                container.innerHTML += `<div class="category-header ${c.c}">${c.n}</div>`;
+                nearest.forEach(item => {
+                    const dStr = item.dist > 1000 ? (item.dist/1000).toFixed(1)+"km" : Math.round(item.dist)+"m";
+                    container.innerHTML += `<div class="poi-item"><span>${item.tags.name || 'S/N'}</span><span style="color:var(--accent)">${dStr}</span></div>`;
+                    L.circleMarker([item.lat, item.lon], { radius: 6, color: c.hex, fillOpacity: 0.8 }).addTo(poiLayers).bindPopup(item.tags.name || c.n);
+                });
             }
-        } catch (e) { 
-            console.error("Error POIs:", e);
-            container.innerHTML = "Error cargando puntos de interés.";
         }
     }
 
-    function renderForecast(list) {
-        const ctx = document.getElementById('forecastChart').getContext('2d');
-        // Filtrar un dato por día (cada 8 lecturas de 3 horas)
-        const dailyData = list.filter((_, i) => i % 8 === 0).slice(0, 5);
-        const labels = dailyData.map(d => {
-            const date = new Date(d.dt * 1000);
-            return date.toLocaleDateString('es-ES', { weekday: 'short' });
-        });
-        const temps = dailyData.map(d => d.main.temp);
-
-        if (forecastChart) forecastChart.destroy();
-        forecastChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Temp Pronosticada (°C)',
-                    data: temps,
-                    borderColor: '#00d1ff',
-                    backgroundColor: 'rgba(0, 209, 255, 0.1)',
-                    fill: true,
-                    tension: 0.4
-                }]
-            },
-            options: {
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: {
-                    y: { grid: { color: '#333' }, ticks: { color: '#999' } },
-                    x: { grid: { display: false }, ticks: { color: '#999' } }
-                }
-            }
-        });
-    }
-
-    function showError(error) {
-        const msg = {
-            1: "Permiso denegado. Activa el GPS.",
-            2: "Ubicación no disponible.",
-            3: "Tiempo de espera agotado."
-        };
-        document.getElementById('weather-desc').innerText = msg[error.code] || "Error de GPS";
-    }
-
-    window.onload = initApp;
+    window.onload = init;
 </script>
 </body>
 </html>

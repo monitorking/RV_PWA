@@ -24,26 +24,31 @@
             overflow: hidden;
         }
 
-        /* Botón de Pantalla Completa */
         #fs-btn {
             position: fixed; top: 10px; right: 10px; z-index: 1000;
             background: rgba(0, 209, 255, 0.3); border: 1px solid var(--accent);
             color: white; padding: 8px 12px; border-radius: 5px; font-size: 12px;
+            cursor: pointer;
         }
 
         .container {
             display: grid;
             grid-template-columns: 320px 1fr;
-            grid-template-rows: 110px 1fr 150px;
+            grid-template-rows: 125px 1fr 150px;
             height: 100vh;
         }
 
+        /* --- Clima Actual + Fecha --- */
         #weather-now { 
             grid-column: 1; grid-row: 1; 
-            padding: 10px; background: var(--card-bg);
+            padding: 12px; background: var(--card-bg);
             border-bottom: 2px solid #333;
-            display: flex; align-items: center; justify-content: space-around;
+            display: flex; align-items: center; justify-content: space-between;
         }
+
+        .date-info { font-size: 0.85em; color: var(--accent); font-weight: bold; margin-bottom: 2px; text-transform: capitalize; }
+        #temp-main { font-size: 2.2em; font-weight: bold; margin: 0; line-height: 1; }
+        #weather-desc { text-transform: capitalize; color: #aaa; font-size: 0.85em; margin-top: 2px; }
 
         #poi-sidebar { 
             grid-column: 1; grid-row: 2 / 4; 
@@ -83,11 +88,12 @@
 
 <div class="container">
     <div id="weather-now">
-        <div>
-            <h2 id="temp-main" style="margin:0; font-size: 2em;">--°C</h2>
+        <div style="flex: 1;">
+            <div id="current-date" class="date-info">Cargando fecha...</div>
+            <h2 id="temp-main">--°C</h2>
             <div id="weather-desc">GPS...</div>
         </div>
-        <img id="weather-icon-main" src="" width="55">
+        <img id="weather-icon-main" src="" width="65">
     </div>
 
     <div id="poi-sidebar">
@@ -104,6 +110,12 @@
     let lastCoords = null;
     let map, userMarker, poiLayers = L.layerGroup();
 
+    function updateDateTime() {
+        const ahora = new Date();
+        const opciones = { weekday: 'long', day: 'numeric', month: 'long' };
+        document.getElementById('current-date').innerText = ahora.toLocaleDateString('es-ES', opciones);
+    }
+
     function toggleFS() {
         if (!document.fullscreenElement) {
             document.documentElement.requestFullscreen();
@@ -112,6 +124,9 @@
     }
 
     function init() {
+        updateDateTime();
+        setInterval(updateDateTime, 60000); // Actualizar fecha cada minuto
+
         map = L.map('map', { zoomControl: false }).setView([40, -3], 13);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
         poiLayers.addTo(map);
@@ -140,7 +155,6 @@
     async function update(lat, lon) {
         map.panTo([lat, lon]);
         
-        // Meteorología
         try {
             const res = await fetch(`https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&units=metric&appid=${API_KEY}&lang=es`);
             const data = await res.json();
@@ -173,7 +187,6 @@
             });
         } catch(e) {}
 
-        // Puntos de interés (Overpass)
         try {
             const q = `[out:json];(node["amenity"="fuel"](around:10000,${lat},${lon});node["amenity"="restaurant"](around:5000,${lat},${lon});node["tourism"="caravan_site"](around:25000,${lat},${lon});node["amenity"="caravan_site"](around:25000,${lat},${lon}););out body;`;
             const res = await fetch("https://overpass-api.de/api/interpreter", { method: "POST", body: q });

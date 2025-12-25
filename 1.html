@@ -3,12 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <title>CamperDash</title>
+    <title>CamperDash Pro</title>
     
-    <link rel="manifest" href='data:application/manifest+json,{"name":"CamperDash","short_name":"CamperDash","start_url":".","display":"standalone","background_color":"#121212","theme_color":"#121212"}'>
-
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
@@ -18,9 +14,7 @@
             --card-bg: #1e1e1e;
             --accent: #00d1ff;
             --text: #e0e0e0;
-            --fuel: #ff9800;
-            --rest: #e91e63;
-            --rv: #4caf50;
+            --rv: #4caf50; --fuel: #ff9800; --rest: #e91e63;
         }
 
         body, html { 
@@ -30,57 +24,52 @@
             overflow: hidden;
         }
 
+        /* Botón de Pantalla Completa */
+        #fs-btn {
+            position: fixed; top: 10px; right: 10px; z-index: 1000;
+            background: rgba(0, 209, 255, 0.3); border: 1px solid var(--accent);
+            color: white; padding: 8px 12px; border-radius: 5px; font-size: 12px;
+        }
+
         .container {
             display: grid;
             grid-template-columns: 320px 1fr;
-            grid-template-rows: 120px 1fr 160px; /* Ajustado para que no se corte */
+            grid-template-rows: 110px 1fr 150px;
             height: 100vh;
         }
 
-        /* --- Clima Actual --- */
         #weather-now { 
             grid-column: 1; grid-row: 1; 
             padding: 10px; background: var(--card-bg);
             border-bottom: 2px solid #333;
             display: flex; align-items: center; justify-content: space-around;
         }
-        #temp-main { font-size: 2.2em; font-weight: bold; margin: 0; }
-        #weather-desc { text-transform: capitalize; color: var(--accent); font-size: 0.9em; }
 
-        /* --- Lista POIs --- */
         #poi-sidebar { 
             grid-column: 1; grid-row: 2 / 4; 
             background: var(--card-bg); padding: 15px;
             overflow-y: auto; border-right: 2px solid #333;
         }
 
-        /* --- Mapa --- */
         #map { grid-column: 2; grid-row: 1 / 3; z-index: 1; }
 
-        /* --- Previsión 5 días (Sin cortes) --- */
         #forecast-panel { 
             grid-column: 2; grid-row: 3; 
-            background: #181818; 
-            display: flex;
-            justify-content: space-evenly;
-            align-items: center;
-            padding: 5px 10px;
-            border-top: 2px solid #333;
+            background: #181818; display: flex;
+            justify-content: space-evenly; align-items: center;
+            padding: 5px; border-top: 2px solid #333;
         }
 
         .forecast-card {
-            text-align: center;
-            background: #252525;
-            padding: 8px;
-            border-radius: 10px;
-            width: 18%; /* Asegura que quepan los 5 sin scroll */
+            text-align: center; background: #252525;
+            padding: 5px; border-radius: 10px; width: 18%;
             border: 1px solid #333;
         }
-        .forecast-card .day { font-weight: bold; color: var(--accent); font-size: 0.8em; }
+
+        .forecast-card .day { font-weight: bold; color: var(--accent); font-size: 0.8em; text-transform: uppercase; }
         .temp-max { color: #ff5252; font-weight: bold; font-size: 0.9em; }
         .temp-min { color: #52b2ff; font-size: 0.8em; margin-left: 4px; }
 
-        /* --- Estilos POIs --- */
         .category-header { padding: 6px; margin-top: 10px; border-radius: 4px; font-weight: bold; font-size: 0.8em; }
         .bg-fuel { background: rgba(255,152,0,0.2); color: var(--fuel); }
         .bg-rest { background: rgba(233,30,99,0.2); color: var(--rest); }
@@ -90,30 +79,37 @@
 </head>
 <body>
 
+<button id="fs-btn" onclick="toggleFS()">PANTALLA COMPLETA</button>
+
 <div class="container">
     <div id="weather-now">
         <div>
-            <h2 id="temp-main">--°C</h2>
+            <h2 id="temp-main" style="margin:0; font-size: 2em;">--°C</h2>
             <div id="weather-desc">GPS...</div>
         </div>
-        <img id="weather-icon-main" src="" width="60">
+        <img id="weather-icon-main" src="" width="55">
     </div>
 
     <div id="poi-sidebar">
-        <h3 style="margin:0 0 10px 0; font-size: 1em;">Puntos Cercanos</h3>
-        <div id="pois-container">Cargando...</div>
+        <h3 style="margin:0 0 10px 0; font-size: 1em; color: var(--accent);">Puntos Cercanos</h3>
+        <div id="pois-container">Iniciando sensores...</div>
     </div>
 
     <div id="map"></div>
-
     <div id="forecast-panel"></div>
 </div>
 
 <script>
     const API_KEY = 'a536bbf0647c0b2071fef4903ed17c8f';
-    const THRESHOLD = 500; 
     let lastCoords = null;
     let map, userMarker, poiLayers = L.layerGroup();
+
+    function toggleFS() {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen();
+            document.getElementById('fs-btn').style.display = 'none';
+        }
+    }
 
     function init() {
         map = L.map('map', { zoomControl: false }).setView([40, -3], 13);
@@ -125,7 +121,7 @@
             navigator.geolocation.watchPosition(pos => {
                 const { latitude, longitude } = pos.coords;
                 userMarker.setLatLng([latitude, longitude]);
-                if (!lastCoords || getDist(lastCoords, [latitude, longitude]) > THRESHOLD) {
+                if (!lastCoords || getDist(lastCoords, [latitude, longitude]) > 500) {
                     lastCoords = [latitude, longitude];
                     update(latitude, longitude);
                 }
@@ -144,7 +140,7 @@
     async function update(lat, lon) {
         map.panTo([lat, lon]);
         
-        // Clima
+        // Meteorología
         try {
             const res = await fetch(`https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&units=metric&appid=${API_KEY}&lang=es`);
             const data = await res.json();
@@ -168,7 +164,7 @@
                 fPanel.innerHTML += `
                     <div class="forecast-card">
                         <div class="day">${dayName}</div>
-                        <img src="https://openweathermap.org/img/wn/${d.icon}.png" width="40">
+                        <img src="https://openweathermap.org/img/wn/${d.icon}.png" width="35">
                         <div class="temps">
                             <span class="temp-max">${Math.round(d.max)}°</span>
                             <span class="temp-min">${Math.round(d.min)}°</span>
@@ -177,9 +173,9 @@
             });
         } catch(e) {}
 
-        // POIs
+        // Puntos de interés (Overpass)
         try {
-            const q = `[out:json];(node["amenity"="fuel"](around:10000,${lat},${lon});node["amenity"="restaurant"](around:5000,${lat},${lon});node["tourism"="caravan_site"](around:20000,${lat},${lon});node["amenity"="caravan_site"](around:20000,${lat},${lon}););out body;`;
+            const q = `[out:json];(node["amenity"="fuel"](around:10000,${lat},${lon});node["amenity"="restaurant"](around:5000,${lat},${lon});node["tourism"="caravan_site"](around:25000,${lat},${lon});node["amenity"="caravan_site"](around:25000,${lat},${lon}););out body;`;
             const res = await fetch("https://overpass-api.de/api/interpreter", { method: "POST", body: q });
             const osm = await res.json();
             renderPOIs(osm.elements, lat, lon);
@@ -188,10 +184,9 @@
 
     function renderPOIs(elements, lat, lon) {
         const container = document.getElementById('pois-container');
-        container.innerHTML = "";
-        poiLayers.clearLayers();
+        container.innerHTML = ""; poiLayers.clearLayers();
         const cats = {
-            caravan: { n: "Áreas AC", items: [], c: "bg-rv", hex: "#4caf50" },
+            caravan: { n: "Áreas Autocaravanas", items: [], c: "bg-rv", hex: "#4caf50" },
             fuel: { n: "Gasolineras", items: [], c: "bg-fuel", hex: "#ff9800" },
             restaurant: { n: "Restaurantes", items: [], c: "bg-rest", hex: "#e91e63" }
         };
@@ -210,7 +205,7 @@
                 nearest.forEach(i => {
                     const d = i.dist > 1000 ? (i.dist/1000).toFixed(1)+"km" : Math.round(i.dist)+"m";
                     container.innerHTML += `<div class="poi-item"><span>${i.tags.name || 'S/N'}</span><span style="color:var(--accent)">${d}</span></div>`;
-                    L.circleMarker([i.lat, i.lon], { radius: 5, color: c.hex, fillOpacity: 0.8 }).addTo(poiLayers).bindPopup(i.tags.name || c.n);
+                    L.circleMarker([i.lat, i.lon], { radius: 6, color: c.hex, fillOpacity: 0.8 }).addTo(poiLayers).bindPopup(i.tags.name || c.n);
                 });
             }
         }

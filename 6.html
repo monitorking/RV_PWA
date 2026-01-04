@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>CamperDash v2026 - Standard Edition</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <style>
+        :root {
+            --sidebar-bg: #1e1e1e;
+            --main-bg: #121212;
+            --accent: #007bff;
+            --text-light: #e0e0e0;
+        }
+
+        body, html { 
+            margin: 0; padding: 0; height: 100%; 
+            font-family: Arial, sans-serif;
+            background: var(--main-bg); color: var(--text-light);
+            overflow: hidden;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            grid-template-rows: 130px 1fr 160px;
+            height: 100vh;
+        }
+
+        /* Paneles */
+        #weather-now { grid-column: 1; grid-row: 1; padding: 15px; background: var(--sidebar-bg); border-bottom: 2px solid #333; display: flex; align-items: center; justify-content: space-between; }
+        #poi-sidebar { grid-column: 1; grid-row: 2 / 4; background: var(--sidebar-bg); padding: 15px; overflow-y: auto; border-right: 2px solid #333; }
+        #map { grid-column: 2; grid-row: 1 / 3; z-index: 1; border-bottom: 2px solid #333; }
+        
+        /* Panel Pronóstico Inferior */
+        #forecast-panel { 
+            grid-column: 2; grid-row: 3; 
+            background: #ffffff; 
+            display: flex; justify-content: space-around; align-items: center;
+            padding: 10px;
+        }
+
+        .forecast-day {
+            text-align: center; color: #333; width: 18%;
+            border-right: 1px solid #eee;
+        }
+        .forecast-day:last-child { border-right: none; }
+        
+        .day-name { font-weight: bold; font-size: 0.9em; text-transform: uppercase; color: var(--accent); }
+        .temp-high { color: #d32f2f; font-weight: bold; font-size: 1.1em; }
+        .temp-low { color: #1976d2; font-size: 1em; margin-left: 4px; }
+        
+        /* Botón Fullscreen */
+        #fs-btn { position: fixed; top: 10px; right: 10px; z-index: 1000; background: var(--accent); color: white; border: none; padding: 10px; border-radius: 4px; }
+
+        /* Estilos POIs */
+        .category-header { padding: 8px; margin-top: 15px; border-radius: 4px; font-weight: bold; font-size: 0.8em; text-transform: uppercase; background: #333; }
+        .poi-item { background: #2a2a2a; margin: 4px 0; padding: 8px; border-radius: 4px; font-size: 0.8em; display: flex; justify-content: space-between; }
+    </style>
+</head>
+<body>
+
+<button id="fs-btn" onclick="document.documentElement.requestFullscreen()">PANTALLA COMPLETA</button>
+
+<div class="container">
+    <div id="weather-now">
+        <div>
+            <div id="date" style="color: var(--accent); font-weight: bold; font-size: 0.9em;">Cargando...</div>
+            <h2 id="current-temp" style="font-size: 2.5em; margin: 5px 0;">--°C</h2>
+            <div id="current-desc" style="font-size: 0.8em; color: #aaa; text-transform: capitalize;">Esperando GPS...</div>
+        </div>
+        <div id="current-icon-container"></div>
+    </div>
+
+    <div id="poi-sidebar">
+        <h3 style="margin:0 0 10px 0;">Puntos de Interés</h3>
+        <div id="pois">Iniciando...</div>
+    </div>
+
+    <div id="map"></div>
+    
+    <div id="forecast-panel">
+        </div>
+</div>
+
+<script>
+    const API_KEY = 'a536bbf0647c0b2071fef4903ed17c8f';
+    let map, userMarker, poiLayers = L.layerGroup();
+    let lastCoords = null;
+
+    function init() {
+        // Mapa Estándar
+        map = L.map('map', { zoomControl: false }).setView([40, -3], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        poiLayers.addTo(map);
+
+        userMarker = L.circleMarker([0,0], { radius: 10, color: 'white', fillColor: '#007bff', fillOpacity: 1, weight: 2 }).addTo(map);
+
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(pos => {
+                const lat = pos.coords.latitude;
+                const lon = pos.coords.longitude;
+                userMarker.setLatLng([lat, lon]);
+                
+                if (!lastCoords || getDist(lastCoords, [lat, lon]) > 500) {
+                    lastCoords = [lat, lon];
+                    map.panTo([lat, lon]);
+                    fetchWeatherData(lat, lon);
+                    fetchPOIs(lat, lon);
+                }
+            }, null, { enableHighAccuracy: true });
+        }
+        
+        setInterval(() => {
+            const n = new Date();
+            document.getElementById('date').innerText = n.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'short' });
+        }, 1000);
+    }
+
+    async function fetchWeatherData(lat, lon) {
+        try {
+            const response = await fetch(`https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&units=metric&appid=${API_KEY}&lang=es`);
+            const data = await response.json();
+
+            // 1. Clima Actual
+            const now = data.list[0];
+            document.getElementById('current-temp').innerText = Math.round(now.main.temp) + "°C";
+            document.getElementById('current-desc').innerText = now.weather[0].description;
+            document.getElementById('current-icon-container').innerHTML = `<img src="https://openweathermap.org/img/wn/${now.weather[0].icon}@2x.png" width="80">`;
+
+            // 2. Pronóstico 5 días (Agrupado por día)
+            const forecastPanel = document.getElementById('forecast-panel');
+            forecastPanel.innerHTML = "";
+            
+            // Filtramos para obtener un reporte por día (aprox a mediodía)
+            const dailyData = data.list.filter(item => item.dt_txt.includes("12:00:00"));
+
+            dailyData.forEach(day => {
+                const date = new Date(day.dt * 1000);
+                const dayName = date.toLocaleDateString('es-ES', { weekday: 'short' });
+                
+                forecastPanel.innerHTML += `
+                    <div class="forecast-day">
+                        <div class="day-name">${dayName}</div>
+                        <img src="https://openweathermap.org/img/wn/${day.weather[0].icon}@2x.png" width="60">
+                        <div>
+                            <span class="temp-high">${Math.round(day.main.temp_max)}°</span>
+                            <span class="temp-low">${Math.round(day.main.temp_min)}°</span>
+                        </div>
+                    </div>
+                `;
+            });
+        } catch (error) {
+            console.error("Error clima:", error);
+        }
+    }
+
+    async function fetchPOIs(lat, lon) {
+        try {
+            const query = `[out:json];(node["amenity"="fuel"](around:10000,${lat},${lon});node["tourism"="caravan_site"](around:20000,${lat},${lon});node["amenity"="restaurant"](around:5000,${lat},${lon}););out body;`;
+            const res = await fetch("https://overpass-api.de/api/interpreter", { method: "POST", body: query });
+            const data = await res.json();
+            
+            const container = document.getElementById('pois');
+            container.innerHTML = "";
+            poiLayers.clearLayers();
+
+            data.elements.slice(0, 15).forEach(poi => {
+                const dist = Math.round(getDist([lat, lon], [poi.lat, poi.lon]) / 100) / 10 + " km";
+                container.innerHTML += `
+                    <div class="poi-item">
+                        <span>${poi.tags.name || 'Punto de interés'}</span>
+                        <span style="color:var(--accent)">${dist}</span>
+                    </div>
+                `;
+                L.marker([poi.lat, poi.lon]).addTo(poiLayers);
+            });
+        } catch (e) {}
+    }
+
+    function getDist(c1, c2) {
+        const R = 6371e3;
+        const dLat = (c2[0]-c1[0]) * Math.PI/180;
+        const dLon = (c2[1]-c1[1]) * Math.PI/180;
+        const a = Math.sin(dLat/2)**2 + Math.cos(c1[0]*Math.PI/180) * Math.cos(c2[0]*Math.PI/180) * Math.sin(dLon/2)**2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
+    window.onload = init;
+</script>
+</body>
+</html>

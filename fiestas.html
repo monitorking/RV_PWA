@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Buscador de Fiestas por GPS</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background-color: #f4f4f9; color: #333; }
+        .container { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #2c3e50; font-size: 1.5rem; text-align: center; }
+        button { width: 100%; padding: 15px; background: #3498db; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 1rem; }
+        button:disabled { background: #bdc3c7; }
+        #status { margin-top: 15px; font-style: italic; color: #7f8c8d; text-align: center; }
+        .fiesta-card { border-bottom: 1px solid #eee; padding: 10px 0; }
+        .fiesta-card:last-child { border: none; }
+        .distancia { font-weight: bold; color: #e67e22; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Fiestas Cercanas a mi GPS</h1>
+    <button id="btnBuscar">Buscar fiestas a mi alrededor</button>
+    <div id="status">Haz clic para buscar</div>
+    <div id="resultados"></div>
+</div>
+
+<script>
+    const btn = document.getElementById('btnBuscar');
+    const status = document.getElementById('status');
+    const resultados = document.getElementById('resultados');
+
+    btn.addEventListener('click', () => {
+        if (!navigator.geolocation) {
+            status.textContent = "Tu navegador no soporta GPS.";
+            return;
+        }
+
+        status.textContent = "Localizando tu tablet...";
+        btn.disabled = true;
+
+        navigator.geolocation.getCurrentPosition(async (position) => {
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+            
+            status.textContent = `Coordenadas: ${lat.toFixed(4)}, ${lon.toFixed(4)}. Buscando en Wikidata...`;
+            
+            try {
+                const fiestas = await consultarWikidata(lat, lon);
+                mostrarResultados(fiestas);
+            } catch (error) {
+                status.textContent = "Error al obtener datos.";
+                console.error(error);
+            } finally {
+                btn.disabled = false;
+            }
+        }, (error) => {
+            status.textContent = "Error de GPS: " + error.message;
+            btn.disabled = false;
+        });
+    });
+
+    async function consultarWikidata(lat, lon) {
+        const radio = 30; // Radio de 30 km
+        const sparqlQuery = `
+        SELECT ?item ?itemLabel ?dist WHERE {
+          SERVICE wikibase:around {
+            ?item wdt:P625 ?coords.
+            bd:serviceParam wikibase:center "Point(${lon} ${lat})"^^geo:wktLiteral.
+            bd:serviceParam wikibase:radius "${radio}".
+            bd:serviceParam wikibase:distance ?dist.
+          }
+          ?item wdt:P31/wdt:P279* wd:Q132241.
+          SERVICE wikibase:label { bd:serviceParam wikibase:language "es". }
+        } ORDER BY ?dist LIMIT 15`;
+
+        const url = "https://query.wikidata.org/sparql?format=json&query=" + encodeURIComponent(sparqlQuery);
+        const response = await fetch(url, { headers: { 'Accept': 'application/sparql-results+json' } });
+        const data = await response.json();
+        return data.results.bindings;
+    }
+
+    function mostrarResultados(fiestas) {
+        resultados.innerHTML = "";
+        if (fiestas.length === 0) {
+            status.textContent = "No se encontraron fiestas registradas cerca.";
+            return;
+        }
+        status.textContent = `Se han encontrado ${fiestas.length} fiestas:`;
+        
+        fiestas.forEach(f => {
+            const div = document.createElement('div');
+            div.className = 'fiesta-card';
+            div.innerHTML = `
+                <strong>${f.itemLabel.value}</strong><br>
+                <span class="distancia">A ${parseFloat(f.dist.value).toFixed(2)} km de ti</span><br>
+                <a href="${f.item.value}" target="_blank">Ver detalles</a>
+            `;
+            resultados.appendChild(div);
+        });
+    }
+</script>
+
+</body>
+</html>

@@ -1,29 +1,42 @@
 async function consultarWikidata(lat, lon) {
-    const radio = 30; // Radio de búsqueda en km
-    
-    // Lista de QIDs de Wikidata para mejorar la búsqueda:
-    // Q132241 = festividad
-    // Q1030268 = fiesta mayor
-    // Q2891396 = fiesta patronal
-    // Q1479661 = feria
-    
+    // 1. Aseguramos que lat y lon sean números y usen punto decimal
+    const latitude = parseFloat(lat);
+    const longitude = parseFloat(lon);
+    const radio = 30; 
+
+    if (isNaN(latitude) || isNaN(longitude)) {
+        throw new Error("Coordenadas no válidas");
+    }
+
+    // 2. La query con Point formateado estrictamente
     const sparqlQuery = `
     SELECT ?item ?itemLabel ?dist ?coords WHERE {
       SERVICE wikibase:around {
         ?item wdt:P625 ?coords.
-        bd:serviceParam wikibase:center "Point(${lon} ${lat})"^^geo:wktLiteral.
+        bd:serviceParam wikibase:center "Point(${longitude} ${latitude})"^^geo:wktLiteral.
         bd:serviceParam wikibase:radius "${radio}".
         bd:serviceParam wikibase:distance ?dist.
       }
-      # Buscamos elementos que sean festividades o fiestas locales/patronales
       ?item wdt:P31/wdt:P279* ?clase.
       VALUES ?clase { wd:Q132241 wd:Q1030268 wd:Q2891396 wd:Q1479661 }
-      
       SERVICE wikibase:label { bd:serviceParam wikibase:language "es,ca,gl,eu,en". }
     } ORDER BY ?dist LIMIT 20`;
 
     const url = "https://query.wikidata.org/sparql?format=json&query=" + encodeURIComponent(sparqlQuery);
-    const response = await fetch(url, { headers: { 'Accept': 'application/sparql-results+json' } });
+
+    // 3. Importante: Wikidata requiere identificarse o puede dar error 403
+    const response = await fetch(url, {
+        headers: { 
+            'Accept': 'application/sparql-results+json',
+            // 'User-Agent': 'MiAppFiestas/1.0 (mi-email@ejemplo.com)' 
+        }
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Error en Wikidata: ${response.status} - ${errorText}`);
+    }
+
     const data = await response.json();
     return data.results.bindings;
 }

@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#121212">
+    <title>CamperDash v2027 - Navigator</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+        :root {
+            --sidebar-bg: #1e1e1e;
+            --main-bg: #121212;
+            --card: #2a2a2a;
+            --accent: #007bff;
+            --text-light: #e0e0e0;
+            --muted: #9a9a9a;
+            --ok: #2e9e5b;
+            --warn: #e8a317;
+            --bad: #d9453b;
+            --sidebar-w: 340px;
+        }
+
+        * { box-sizing: border-box; }
+
+        body, html {
+            margin: 0; padding: 0; height: 100%;
+            font-family: Arial, sans-serif;
+            background: var(--main-bg); color: var(--text-light);
+            overflow: hidden;
+        }
+
+        button { font-family: inherit; }
+        button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible {
+            outline: 2px solid #fff; outline-offset: 2px;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: var(--sidebar-w) 1fr;
+            grid-template-rows: 130px 1fr 160px;
+            grid-template-areas:
+                "weather map"
+                "side    map"
+                "side    forecast";
+            height: 100vh;
+            height: 100dvh;
+        }
+
+        /* Tiempo actual */
+        #weather-now {
+            grid-area: weather; padding: 12px 15px; background: var(--sidebar-bg);
+            border-bottom: 2px solid #333; border-right: 2px solid #333;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        #date { color: var(--accent); font-weight: bold; font-size: 0.9em; text-transform: capitalize; }
+        #current-temp { font-size: 2.3em; margin: 2px 0; }
+        #current-desc { font-size: 0.8em; color: #aaa; text-transform: capitalize; }
+        #current-extra { font-size: 0.78em; color: var(--muted); margin-top: 4px; }
+
+        /* Panel lateral */
+        #poi-sidebar {
+            grid-area: side; background: var(--sidebar-bg);
+            border-right: 2px solid #333; display: flex; flex-direction: column;
+            min-height: 0;
+        }
+        #tabs { display: flex; border-bottom: 2px solid #333; }
+        .tab-btn {
+            flex: 1; padding: 12px 4px; background: transparent; color: var(--muted);
+            border: none; border-bottom: 3px solid transparent; font-size: 0.95em; cursor: pointer;
+        }
+        .tab-btn.active { color: #fff; border-bottom-color: var(--accent); font-weight: bold; }
+        .tab-panel { display: none; padding: 15px; overflow-y: auto; flex: 1; min-height: 0; }
+        .tab-panel.active { display: block; }
+        .tab-panel h3 { margin: 0 0 10px 0; font-size: 1.05em; }
+
+        select {
+            width: 100%; padding: 10px; background: #333; color: white;
+            border: 1px solid var(--accent); border-radius: 5px; margin-bottom: 10px;
+            font-size: 1em;
+        }
+        .row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+        .row select { margin-bottom: 0; }
+        .hint { color: var(--muted); font-size: 0.85em; line-height: 1.4; }
+
+        /* Mapa */
+        #map-area { grid-area: map; position: relative; border-bottom: 2px solid #333; min-height: 0; }
+        #map { position: absolute; inset: 0; z-index: 1; }
+
+        #toolbar { position: absolute; top: 10px; right: 10px; z-index: 1000; display: flex; gap: 8px; }
+        .tool-btn {
+            background: var(--accent); color: white; border: none; padding: 10px 12px;
+            border-radius: 6px; font-size: 0.85em; cursor: pointer; min-height: 40px;
+            box-shadow: 0 1px 4px rgba(0,0,0,.5);
+        }
+        .tool-btn.off { background: #444; }
+
+        #gps-chip {
+            position: absolute; left: 10px; bottom: 10px; z-index: 1000;
+            background: rgba(18,18,18,.85); color: #fff; padding: 8px 12px; border-radius: 6px;
+            font-size: 0.9em; display: flex; gap: 14px;
+        }
+
+        /* Previsión */
+        #forecast-panel {
+            grid-area: forecast; background: #ffffff;
+            display: flex; justify-content: space-around; align-items: center; padding: 10px;
+        }
+        .forecast-day { text-align: center; color: #333; width: 19%; border-right: 1px solid #eee; }
+        .forecast-day:last-child { border-right: none; }
+        .day-name { font-weight: bold; font-size: 0.9em; text-transform: capitalize; color: var(--accent); }
+        .temp-high { color: #d32f2f; font-weight: bold; font-size: 1.1em; }
+        .temp-low { color: #1976d2; font-size: 1em; margin-left: 4px; }
+        .rain { color: #1976d2; font-size: 0.75em; min-height: 1em; }
+        .forecast-msg { color: #555; font-size: 0.9em; }
+
+        /* POIs */
+        .poi-item {
+            background: var(--card); margin: 8px 0; padding: 10px; border-radius: 6px;
+            font-size: 0.88em; display: flex; align-items: flex-start; gap: 10px; cursor: pointer;
+        }
+        .poi-item:hover { background: #333; }
+        .poi-number {
+            background: var(--accent); color: white; min-width: 24px; height: 24px;
+            border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            font-weight: bold; font-size: 0.8em; margin-top: 2px;
+        }
+        .poi-info { flex-grow: 1; }
+        .poi-top { display: flex; justify-content: space-between; gap: 8px; }
+        .poi-dist { color: var(--accent); font-weight: bold; white-space: nowrap; }
+        .poi-badges { color: var(--muted); font-size: 0.85em; margin-top: 4px; }
+        .go {
+            display: inline-block; margin-top: 6px; padding: 6px 12px; background: var(--accent);
+            color: #fff; border-radius: 5px; text-decoration: none; font-size: 0.9em;
+        }
+
+        .map-number-label {
+            background: var(--accent); border: 2px solid white; border-radius: 50%;
+            color: white; font-weight: bold; text-align: center; line-height: 20px;
+        }
+        .park-label {
+            background: #6a1b9a; border: 2px solid white; border-radius: 6px;
+            color: white; font-weight: bold; text-align: center; line-height: 22px;
+        }
+
+        /* Caravana */
+        .level { background: var(--card); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+        .level-head { display: flex; justify-content: space-between; font-size: 0.92em; margin-bottom: 6px; }
+        .level-bar { height: 10px; background: #111; border-radius: 5px; overflow: hidden; margin-bottom: 8px; }
+        .level-fill { height: 100%; transition: width .2s, background .2s; }
+        .level input[type=range] { width: 100%; height: 28px; margin: 0; }
+
+        .box { background: var(--card); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+        .box h4 { margin: 0 0 8px 0; font-size: 1em; }
+        .btn {
+            background: var(--accent); color: #fff; border: none; border-radius: 6px;
+            padding: 10px 14px; font-size: 0.9em; cursor: pointer; min-height: 40px; text-decoration: none;
+            display: inline-block;
+        }
+        .btn.secondary { background: #444; }
+        .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+
+        /* Lista de salida */
+        .check-item {
+            display: flex; align-items: center; gap: 12px; background: var(--card);
+            border-radius: 6px; padding: 12px; margin-bottom: 8px; font-size: 0.95em; cursor: pointer;
+        }
+        .check-item input { width: 22px; height: 22px; flex-shrink: 0; }
+        .check-item.done span { color: var(--muted); text-decoration: line-through; }
+        #check-progress { font-weight: bold; margin-bottom: 10px; }
+
+        #version { color: #555; font-size: 0.75em; text-align: center; padding: 6px; }
+
+        /* Móvil y tablet vertical */
+        @media (max-width: 800px), (max-aspect-ratio: 1/1) {
+            body, html { overflow: auto; height: auto; }
+            .container {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto 55vh auto auto;
+                grid-template-areas: "weather" "map" "forecast" "side";
+                height: auto;
+            }
+            #weather-now, #poi-sidebar { border-right: none; }
+            #forecast-panel { min-height: 150px; }
+            #poi-sidebar { min-height: 60vh; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            * { transition: none !important; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div id="weather-now">
+        <div>
+            <div id="date">Cargando...</div>
+            <h2 id="current-temp">--°C</h2>
+            <div id="current-desc">Esperando ubicación...</div>
+            <div id="current-extra"></div>
+        </div>
+        <div id="current-icon-container"></div>
+    </div>
+
+    <div id="poi-sidebar">
+        <div id="tabs" role="tablist">
+            <button class="tab-btn active" role="tab" data-tab="stops" onclick="showTab('stops')">Paradas</button>
+            <button class="tab-btn" role="tab" data-tab="van" onclick="showTab('van')">Caravana</button>
+            <button class="tab-btn" role="tab" data-tab="check" onclick="showTab('check')">Salida</button>
+        </div>
+
+        <div id="tab-stops" class="tab-panel active" role="tabpanel">
+            <h3>Buscar parada</h3>
+            <select id="category-select" onchange="fetchPOIs()" aria-label="Categoría">
+                <option value="">Selecciona categoría...</option>
+                <option value="caravan">Áreas de autocaravanas</option>
+                <option value="water">Agua potable</option>
+                <option value="dump">Vaciado de aguas</option>
+                <option value="fuel">Gasolineras</option>
+                <option value="lpg">Gasolineras con GLP</option>
+                <option value="supermarket">Supermercados</option>
+                <option value="restaurant">Restaurantes</option>
+                <option value="laundry">Lavanderías</option>
+                <option value="pharmacy">Farmacias</option>
+                <option value="hospital">Hospitales</option>
+            </select>
+            <div class="row">
+                <label for="radius-select" class="hint">Radio</label>
+                <select id="radius-select" onchange="fetchPOIs()">
+                    <option value="5">5 km</option>
+                    <option value="15">15 km</option>
+                    <option value="30" selected>30 km</option>
+                    <option value="60">60 km</option>
+                </select>
+            </div>
+            <div id="pois" class="hint">Selecciona una categoría para ver los lugares cercanos.</div>
+        </div>
+
+        <div id="tab-van" class="tab-panel" role="tabpanel">
+            <h3>Niveles</h3>
+            <div id="levels"></div>
+
+            <div class="box">
+                <h4>Dónde está la autocaravana</h4>
+                <div id="park-info" class="hint">Aún no has guardado ningún aparcamiento.</div>
+                <div class="btn-row">
+                    <button class="btn" onclick="saveParking()">Guardar aquí</button>
+                    <a class="btn secondary" id="park-nav" href="#" target="_blank" rel="noopener" style="display:none">Volver al vehículo</a>
+                    <button class="btn secondary" id="park-clear" onclick="clearParking()" style="display:none">Borrar</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-check" class="tab-panel" role="tabpanel">
+            <h3>Antes de arrancar</h3>
+            <div id="check-progress"></div>
+            <div id="checklist"></div>
+            <div class="btn-row">
+                <button class="btn secondary" onclick="resetChecklist()">Empezar de nuevo</button>
+            </div>
+        </div>
+
+        <div id="version">CamperDash v8</div>
+    </div>
+
+    <div id="map-area">
+        <div id="map"></div>
+        <div id="toolbar">
+            <button class="tool-btn" id="center-btn" onclick="recenter()">Centrar</button>
+            <button class="tool-btn off" id="wake-btn" onclick="toggleWake()" style="display:none">Pantalla activa: no</button>
+            <button class="tool-btn" id="fs-btn" onclick="toggleFullscreen()" style="display:none">Pantalla completa</button>
+        </div>
+        <div id="gps-chip"><span id="chip-speed">-- km/h</span><span id="chip-alt">-- m</span></div>
+    </div>
+
+    <div id="forecast-panel"><span class="forecast-msg">Cargando previsión...</span></div>
+</div>
+
+<script>
+    const APP_VERSION = '8';
+    const API_KEY = 'a536bbf0647c0b2071fef4903ed17c8f';
+
+    /* ---------- Utilidades ---------- */
+    const Store = {
+        get(k, d) { try { const v = localStorage.getItem('camperdash:' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+        set(k, v) { try { localStorage.setItem('camperdash:' + k, JSON.stringify(v)); } catch (e) {} }
+    };
+    const $ = id => document.getElementById(id);
+    const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+    function getDist(c1, c2) {
+        const R = 6371e3;
+        const dLat = (c2[0] - c1[0]) * Math.PI / 180;
+        const dLon = (c2[1] - c1[1]) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) ** 2 + Math.cos(c1[0] * Math.PI / 180) * Math.cos(c2[0] * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+    const fmtDist = m => m >= 1000 ? (m / 1000).toFixed(1) + ' km' : Math.round(m) + ' m';
+    const navUrl = (lat, lon) => `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}&travelmode=driving`;
+
+    /* ---------- Estado ---------- */
+    let map, userMarker, parkMarker, poiLayers = L.layerGroup();
+    let lastCoords = null, weatherCoords = null;
+    let followUser = true, firstFix = true;
+    let currentPois = [], currentMarkers = [], poiToken = 0;
+
+    /* ---------- Pestañas ---------- */
+    function showTab(name) {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
+    }
+
+    /* ---------- Inicio ---------- */
+    function init() {
+        map = L.map('map', { zoomControl: false }).setView([40, -3], 6);
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19, attribution: '&copy; OpenStreetMap'
+        }).addTo(map);
+        poiLayers.addTo(map);
+
+        userMarker = L.circleMarker([0, 0], { radius: 10, color: 'white', fillColor: '#007bff', fillOpacity: 1, weight: 2 }).addTo(map);
+
+        map.on('dragstart', () => { followUser = false; $('center-btn').classList.add('off'); });
+
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(onPosition, onPositionError, { enableHighAccuracy: true, maximumAge: 5000 });
+        } else {
+            onPositionError();
+        }
+
+        initLevels();
+        initChecklist();
+        restoreParking();
+        initToolbar();
+        updateClock();
+        setInterval(updateClock, 10000);
+        setInterval(() => { if (lastCoords) fetchWeatherData(lastCoords[0], lastCoords[1]); }, 30 * 60 * 1000);
+
+        // Si no hay GPS todavía, muestra el último tiempo guardado
+        const cached = Store.get('weather', null);
+        if (cached) renderWeather(cached.cur, cached.fc, true);
+    }
+
+    function updateClock() {
+        const n = new Date();
+        const d = n.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'short' });
+        const t = n.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+        $('date').innerText = d + ', ' + t;
+    }
+
+    function onPosition(pos) {
+        const { latitude: lat, longitude: lon, speed, altitude } = pos.coords;
+        lastCoords = [lat, lon];
+        userMarker.setLatLng(lastCoords);
+
+        if (firstFix) {
+            firstFix = false;
+            map.setView(lastCoords, 13);
+        } else if (followUser) {
+            map.panTo(lastCoords);
+        }
+
+        $('chip-speed').innerText = (speed != null && !isNaN(speed)) ? Math.round(speed * 3.6) + ' km/h' : '-- km/h';
+        $('chip-alt').innerText = (altitude != null && !isNaN(altitude)) ? Math.round(altitude) + ' m' : '-- m';
+
+        // Actualiza el tiempo al arrancar y cada vez que te mueves más de 5 km
+        if (!weatherCoords || getDist(weatherCoords, lastCoords) > 5000) {
+            weatherCoords = lastCoords;
+            fetchWeatherData(lat, lon);
+        }
+        updateParkingInfo();
+    }
+
+    function onPositionError() {
+        if (!lastCoords) $('current-desc').innerText = 'Activa la ubicación para ver el tiempo y las paradas.';
+    }
+
+    function recenter() {
+        followUser = true;
+        $('center-btn').classList.remove('off');
+        if (lastCoords) map.setView(lastCoords, Math.max(map.getZoom(), 13));
+    }
+
+    /* ---------- Pantalla completa y pantalla activa ---------- */
+    function initToolbar() {
+        const el = document.documentElement;
+        if (el.requestFullscreen || el.webkitRequestFullscreen) $('fs-btn').style.display = '';
+        if ('wakeLock' in navigator) {
+            $('wake-btn').style.display = '';
+            if (Store.get('wake', false)) setWake(true);
+        }
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && Store.get('wake', false)) setWake(true);
+        });
+    }
+
+    function toggleFullscreen() {
+        const el = document.documentElement;
+        if (document.fullscreenElement || document.webkitFullscreenElement) {
+            (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+        } else {
+            (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
+        }
+    }
+
+    let wakeLock = null;
+    async function setWake(on) {
+        try {
+            if (on) {
+                wakeLock = await navigator.wakeLock.request('screen');
+            } else if (wakeLock) {
+                await wakeLock.release();
+                wakeLock = null;
+            }
+        } catch (e) { on = false; }
+        $('wake-btn').innerText = 'Pantalla activa: ' + (on ? 'sí' : 'no');
+        $('wake-btn').classList.toggle('off', !on);
+    }
+    function toggleWake() {
+        const next = !Store.get('wake', false);
+        Store.set('wake', next);
+        setWake(next);
+    }
+
+    /* ---------- Tiempo ---------- */
+    async function fetchWeatherData(lat, lon) {
+        const base = `lat=${lat}&lon=${lon}&units=metric&appid=${API_KEY}&lang=es`;
+        try {
+            const [r1, r2] = await Promise.all([
+                fetch(`https://api.openweathermap.org/data/2.5/weather?${base}`),
+                fetch(`https://api.openweathermap.org/data/2.5/forecast?${base}`)
+            ]);
+            if (!r1.ok || !r2.ok) throw new Error('API');
+            const cur = await r1.json();
+            const fc = await r2.json();
+            Store.set('weather', { cur, fc, ts: Date.now() });
+            renderWeather(cur, fc, false);
+        } catch (e) {
+            const cached = Store.get('weather', null);
+            if (cached) renderWeather(cached.cur, cached.fc, true);
+            else $('current-desc').innerText = 'No se pudo cargar el tiempo.';
+        }
+    }
+
+    function renderWeather(cur, fc, offline) {
+        $('current-temp').innerText = Math.round(cur.main.temp) + '°C';
+        $('current-desc').innerText = cur.weather[0].description + (offline ? ' (sin conexión)' : '');
+        $('current-icon-container').innerHTML = `<img src="https://openweathermap.org/img/wn/${esc(cur.weather[0].icon)}@2x.png" width="80" alt="">`;
+
+        const wind = Math.round(cur.wind.speed * 3.6);
+        const hm = t => new Date(t * 1000).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+        $('current-extra').innerText = `Viento ${wind} km/h · Humedad ${cur.main.humidity}% · Sol se pone ${hm(cur.sys.sunset)}`;
+
+        // Agrupar la previsión por día para obtener máxima y mínima reales
+        const days = {};
+        fc.list.forEach(item => {
+            const d = new Date(item.dt * 1000);
+            const key = d.toLocaleDateString('en-CA');
+            const g = days[key] || (days[key] = { date: d, max: -Infinity, min: Infinity, pop: 0, best: null, bestGap: 99 });
+            g.max = Math.max(g.max, item.main.temp_max);
+            g.min = Math.min(g.min, item.main.temp_min);
+            g.pop = Math.max(g.pop, item.pop || 0);
+            const gap = Math.abs(d.getHours() - 12);
+            if (gap < g.bestGap) { g.bestGap = gap; g.best = item; }
+        });
+
+        const todayKey = new Date().toLocaleDateString('en-CA');
+        const panel = $('forecast-panel');
+        panel.innerHTML = Object.keys(days).slice(0, 5).map(key => {
+            const g = days[key];
+            const name = key === todayKey ? 'Hoy' : g.date.toLocaleDateString('es-ES', { weekday: 'short' });
+            const icon = g.best.weather[0].icon.replace('n', 'd');
+            const rain = g.pop >= 0.2 ? `Lluvia ${Math.round(g.pop * 100)}%` : '';
+            return `
+                <div class="forecast-day">
+                    <div class="day-name">${esc(name)}</div>
+                    <img src="https://openweathermap.org/img/wn/${esc(icon)}@2x.png" width="60" alt="">
+                    <div>
+                        <span class="temp-high">${Math.round(g.max)}°</span>
+                        <span class="temp-low">${Math.round(g.min)}°</span>
+                    </div>
+                    <div class="rain">${rain}</div>
+                </div>`;
+        }).join('');
+    }
+
+    /* ---------- Paradas (OpenStreetMap / Overpass) ---------- */
+    const CATS = {
+        caravan:     { filters: ['["tourism"="caravan_site"]', '["amenity"="caravan_site"]'] },
+        water:       { filters: ['["amenity"="drinking_water"]', '["amenity"="water_point"]'] },
+        dump:        { filters: ['["amenity"="sanitary_dump_station"]'] },
+        fuel:        { filters: ['["amenity"="fuel"]'] },
+        lpg:         { filters: ['["amenity"="fuel"]["fuel:lpg"="yes"]'] },
+        supermarket: { filters: ['["shop"="supermarket"]'] },
+        restaurant:  { filters: ['["amenity"="restaurant"]'] },
+        laundry:     { filters: ['["shop"="laundry"]', '["amenity"="laundry"]'] },
+        pharmacy:    { filters: ['["amenity"="pharmacy"]'] },
+        hospital:    { filters: ['["amenity"="hospital"]'] }
+    };
+
+    function badges(tags) {
+        const b = [];
+        if (tags.fee === 'yes') b.push('De pago'); else if (tags.fee === 'no') b.push('Gratis');
+        if (tags.drinking_water === 'yes' || tags.water_point === 'yes') b.push('Agua');
+        if (tags.sanitary_dump_station === 'yes') b.push('Vaciado');
+        if (tags.power_supply === 'yes') b.push('Electricidad');
+        if (tags.opening_hours) b.push(esc(tags.opening_hours));
+        return b.join(' · ');
+    }
+
+    async function fetchPOIs() {
+        const cat = $('category-select').value;
+        const container = $('pois');
+        if (!cat) return;
+        if (!lastCoords) { container.innerHTML = 'Esperando la señal GPS...'; return; }
+
+        const token = ++poiToken;
+        const radius = parseInt($('radius-select').value, 10) * 1000;
+        const [lat, lon] = lastCoords;
+        container.innerHTML = 'Buscando...';
+        poiLayers.clearLayers();
+        currentPois = []; currentMarkers = [];
+
+        const parts = CATS[cat].filters.map(f => `nwr${f}(around:${radius},${lat},${lon});`).join('');
+        const query = `[out:json][timeout:25];(${parts});out center tags;`;
+
+        try {
+            const res = await fetch('https://overpass-api.de/api/interpreter', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'data=' + encodeURIComponent(query)
+            });
+            if (!res.ok) throw new Error('Overpass');
+            const data = await res.json();
+            if (token !== poiToken) return; // llegó una búsqueda más reciente
+
+            const seen = new Set();
+            const elements = data.elements.map(e => {
+                const plat = e.lat ?? (e.center && e.center.lat);
+                const plon = e.lon ?? (e.center && e.center.lon);
+                if (plat == null || plon == null) return null;
+                return { lat: plat, lon: plon, tags: e.tags || {}, distance: getDist(lastCoords, [plat, plon]), id: e.type + e.id };
+            }).filter(e => e && !seen.has(e.id) && seen.add(e.id))
+              .sort((a, b) => a.distance - b.distance).slice(0, 8);
+
+            if (elements.length === 0) {
+                container.innerHTML = 'No hay resultados en este radio. Prueba con un radio mayor.';
+                return;
+            }
+
+            currentPois = elements;
+            container.innerHTML = elements.map((poi, i) => {
+                const name = poi.tags.name || 'Sin nombre';
+                const bd = badges(poi.tags);
+                return `
+                    <div class="poi-item" data-i="${i}">
+                        <div class="poi-number">${i + 1}</div>
+                        <div class="poi-info">
+                            <div class="poi-top"><span>${esc(name)}</span><span class="poi-dist">${fmtDist(poi.distance)}</span></div>
+                            ${bd ? `<div class="poi-badges">${bd}</div>` : ''}
+                            <a class="go" href="${navUrl(poi.lat, poi.lon)}" target="_blank" rel="noopener">Cómo llegar</a>
+                        </div>
+                    </div>`;
+            }).join('');
+
+            elements.forEach((poi, i) => {
+                const icon = L.divIcon({ className: 'map-number-label', html: String(i + 1), iconSize: [24, 24], iconAnchor: [12, 12] });
+                const m = L.marker([poi.lat, poi.lon], { icon })
+                    .addTo(poiLayers)
+                    .bindPopup(`<b>#${i + 1} ${esc(poi.tags.name || 'Sin nombre')}</b><br>${fmtDist(poi.distance)}`);
+                currentMarkers.push(m);
+            });
+
+            followUser = false;
+            $('center-btn').classList.add('off');
+            const group = L.featureGroup([userMarker, ...currentMarkers]);
+            map.fitBounds(group.getBounds().pad(0.2));
+        } catch (e) {
+            if (token === poiToken) container.innerHTML = 'No se pudo buscar ahora. Comprueba la conexión e inténtalo de nuevo.';
+        }
+    }
+
+    // Pulsar un lugar de la lista lo centra en el mapa
+    document.addEventListener('click', e => {
+        const item = e.target.closest('.poi-item');
+        if (!item || e.target.closest('a')) return;
+        const i = parseInt(item.dataset.i, 10);
+        const poi = currentPois[i];
+        if (!poi) return;
+        followUser = false;
+        $('center-btn').classList.add('off');
+        map.flyTo([poi.lat, poi.lon], 16);
+        currentMarkers[i].openPopup();
+    });
+
+    /* ---------- Caravana: niveles ---------- */
+    // low: avisa cuando el nivel es bajo; high: avisa cuando es alto (aguas grises)
+    const LEVELS = [
+        { id: 'water',  label: 'Agua limpia',  warn: 'low' },
+        { id: 'grey',   label: 'Aguas grises', warn: 'high' },
+        { id: 'black',  label: 'Aguas negras', warn: 'high' },
+        { id: 'gas',    label: 'Gas',          warn: 'low' },
+        { id: 'leisure', label: 'Batería vivienda', warn: 'low' }
+    ];
+
+    function levelColor(l, v) {
+        const x = l.warn === 'low' ? v : 100 - v;
+        return x <= 15 ? 'var(--bad)' : x <= 35 ? 'var(--warn)' : 'var(--ok)';
+    }
+
+    function initLevels() {
+        const saved = Store.get('levels', {});
+        $('levels').innerHTML = LEVELS.map(l => {
+            const v = saved[l.id] ?? (l.warn === 'low' ? 100 : 0);
+            return `
+                <div class="level">
+                    <div class="level-head"><span>${l.label}</span><b id="lv-val-${l.id}">${v}%</b></div>
+                    <div class="level-bar"><div class="level-fill" id="lv-fill-${l.id}" style="width:${v}%;background:${levelColor(l, v)}"></div></div>
+                    <input type="range" min="0" max="100" step="5" value="${v}" aria-label="${l.label}" oninput="setLevel('${l.id}', this.value)">
+                </div>`;
+        }).join('');
+    }
+
+    function setLevel(id, value) {
+        const l = LEVELS.find(x => x.id === id);
+        const v = parseInt(value, 10);
+        $('lv-val-' + id).innerText = v + '%';
+        const fill = $('lv-fill-' + id);
+        fill.style.width = v + '%';
+        fill.style.background = levelColor(l, v);
+        const saved = Store.get('levels', {});
+        saved[id] = v;
+        Store.set('levels', saved);
+    }
+
+    /* ---------- Caravana: aparcamiento ---------- */
+    function saveParking() {
+        if (!lastCoords) { $('park-info').innerText = 'Esperando la señal GPS para guardar la posición.'; return; }
+        Store.set('parking', { lat: lastCoords[0], lon: lastCoords[1], ts: Date.now() });
+        restoreParking();
+    }
+
+    function clearParking() {
+        Store.set('parking', null);
+        if (parkMarker) { map.removeLayer(parkMarker); parkMarker = null; }
+        restoreParking();
+    }
+
+    function restoreParking() {
+        const p = Store.get('parking', null);
+        const has = !!p;
+        $('park-nav').style.display = has ? '' : 'none';
+        $('park-clear').style.display = has ? '' : 'none';
+        if (!has) {
+            if (parkMarker) { map.removeLayer(parkMarker); parkMarker = null; }
+            $('park-info').innerText = 'Aún no has guardado ningún aparcamiento.';
+            return;
+        }
+        $('park-nav').href = navUrl(p.lat, p.lon);
+        if (!parkMarker) {
+            const icon = L.divIcon({ className: 'park-label', html: 'P', iconSize: [26, 26], iconAnchor: [13, 13] });
+            parkMarker = L.marker([p.lat, p.lon], { icon }).addTo(map).bindPopup('Aquí está la autocaravana');
+        } else {
+            parkMarker.setLatLng([p.lat, p.lon]);
+        }
+        updateParkingInfo();
+    }
+
+    function updateParkingInfo() {
+        const p = Store.get('parking', null);
+        if (!p) return;
+        const mins = Math.max(0, Math.round((Date.now() - p.ts) / 60000));
+        const ago = mins < 60 ? `hace ${mins} min` : mins < 1440 ? `hace ${Math.floor(mins / 60)} h` : `hace ${Math.floor(mins / 1440)} d`;
+        const dist = lastCoords ? ` · a ${fmtDist(getDist(lastCoords, [p.lat, p.lon]))}` : '';
+        $('park-info').innerText = `Guardado ${ago}${dist}`;
+    }
+
+    /* ---------- Lista antes de arrancar ---------- */
+    const CHECKS = [
+        'Cable de electricidad desconectado y guardado',
+        'Toldo y escalón recogidos',
+        'Calzos y estabilizadores recogidos',
+        'Claraboyas y ventanas cerradas',
+        'Armarios, cajones y nevera bien cerrados',
+        'Objetos sueltos guardados',
+        'Gas cerrado',
+        'Aguas grises y negras vaciadas',
+        'Bicicletas y portaequipajes asegurados',
+        'Antena o parabólica recogida'
+    ];
+
+    function initChecklist() {
+        const state = Store.get('checks', {});
+        $('checklist').innerHTML = CHECKS.map((c, i) => `
+            <label class="check-item ${state[i] ? 'done' : ''}" id="ci-${i}">
+                <input type="checkbox" ${state[i] ? 'checked' : ''} onchange="toggleCheck(${i}, this.checked)">
+                <span>${esc(c)}</span>
+            </label>`).join('');
+        updateCheckProgress();
+    }
+
+    function toggleCheck(i, on) {
+        const state = Store.get('checks', {});
+        state[i] = on;
+        Store.set('checks', state);
+        $('ci-' + i).classList.toggle('done', on);
+        updateCheckProgress();
+    }
+
+    function resetChecklist() {
+        Store.set('checks', {});
+        initChecklist();
+    }
+
+    function updateCheckProgress() {
+        const state = Store.get('checks', {});
+        const n = CHECKS.filter((c, i) => state[i]).length;
+        $('check-progress').innerText = n === CHECKS.length ? 'Todo listo para salir' : `${n} de ${CHECKS.length} comprobaciones`;
+    }
+
+    window.onload = init;
+</script>
+</body>
+</html>
